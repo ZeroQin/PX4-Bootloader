@@ -4,3 +4,6 @@
 [submodule "monocypher"]
 	path = monocypher
 	url = https://github.com/LoupVaillant/Monocypher.git
+[submodule "libopencm3"]
+	path = libopencm3
+	url = https://github.com/PX4/libopencm3.git

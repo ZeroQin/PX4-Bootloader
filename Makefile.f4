@@ -1,19 +1,30 @@
 #
 # PX4 bootloader build rules for STM32F4 targets.
 #
-ARCH=stm32
-OPENOCD		?= openocd
+ARCH=stm32	#定义架构
+OPENOCD		?= openocd	#定义openocd命令
 
-JTAGCONFIG ?= interface/olimex-jtag-tiny.cfg
+JTAGCONFIG ?= interface/olimex-jtag-tiny.cfg	#定义openocd对应的jtag烧写器配置文件
 #JTAGCONFIG ?= interface/jtagkey-tiny.cfg
 
 # 5 seconds / 5000 ms default delay
-PX4_BOOTLOADER_DELAY	?= 5000
+PX4_BOOTLOADER_DELAY	?= 5000	#定义启动变量PX4_BOOTLOADER_DELAY 为5000ms
 
-SRCS		= $(COMMON_SRCS) $(addprefix $(ARCH)/,$(ARCH_SRCS)) main_f4.c
+SRCS		= $(COMMON_SRCS) $(addprefix $(ARCH)/,$(ARCH_SRCS)) main_f4.c	#定义编译源文件为lb.c	cdcacm.c	usart.c	和main_f4.c
 
 OBJS		:= $(patsubst %.c,%.o,$(SRCS))
 DEPS		:= $(OBJS:.o=.d)
+
+# -mthumb \ 使用 thumb 指令集
+# -mcpu=cortex-m4 \ 使用 cortex m4 对应的CPU指令
+#-mfloat-abi=hard \浮点为硬件浮点运算
+#-mfpu=fpv4-sp-d16 \ #浮点运算协处理器为fpv4-sp-d16
+#       -DTARGET_HW_$(TARGET_HW) \定义变量TARGET_HW_PX4_FMU_V2为1
+#       -DSTM32F4 \定义变量STM32F4为1
+#       -T$(LINKER_FILE) \使用链接文件stm32f4.ld
+#		-L$(LIBOPENCM3)/lib \添加库文件搜索目录libopencm3/lib
+#		-lopencm3_stm32f4 \链接库文件libopencm3_stm32f4.a
+#       $(EXTRAFLAGS)
 
 FLAGS		+= -mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 \
        -DTARGET_HW_$(TARGET_HW) \
@@ -29,9 +40,13 @@ FLAGS		+= -mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 \
 #
 include rules.mk
 
+#定义upload目标，依赖于all flash-bootloader
 #upload: all flash flash-bootloader
 upload: all flash-bootloader
 
+#执行openocd命令，查找与本工程目录平行的px4_bootloader目录中interface/olimex-jtag-tiny.cfg文件作为jtag烧写器的配置文件，
+#以stm32f4x.cfg作为主控stm32f427的SOC配置文件。然后在openocd环境下依次执行init, reset halt, flash write_image erase 
+#px4fmuv2_bl.bin 0x08000000, reset run, shutdown命令进行烧写。
 flash-bootloader:
 	$(OPENOCD) --search ../px4_bootloader -f $(JTAGCONFIG) -f stm32f4x.cfg -c init -c "reset halt" -c "flash write_image erase $(BINARY) 0x08000000" -c "reset run" -c shutdown
 

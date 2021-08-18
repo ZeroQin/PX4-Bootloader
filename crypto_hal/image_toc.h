@@ -67,7 +67,7 @@ typedef const struct __attribute__((__packed__)) image_toc_start {
 } image_toc_start_t;
 
 /* Table of contents structure. */
-
+//TOC:Table Of Contents, OEM on disk structure. 用以实现全局变量重定位
 typedef struct __attribute__((__packed__)) image_toc_entry {
 	unsigned char name[4];  /* Name of the section */
 	const void *start;      /* Start address of the section in flash */

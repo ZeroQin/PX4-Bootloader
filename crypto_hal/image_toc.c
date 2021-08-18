@@ -71,9 +71,9 @@ bool find_toc(const image_toc_entry_t **toc_entries, uint8_t *len)
 		 * end > start.
 		 */
 		if (i <= MAX_TOC_ENTRIES && i > 0 &&
-		    (uint32_t)entry[0].start == APP_LOAD_ADDRESS &&
-		    (uint32_t)entry[0].end <= (FLASH_END_ADDRESS - sizeof(uint32_t)) &&
-		    (uint32_t)entry[0].end > (uint32_t)entry[0].start) {
+		    (uint32_t)entry[0].start == APP_LOAD_ADDRESS &&  //within the TOC
+		    (uint32_t)entry[0].end <= (FLASH_END_ADDRESS - sizeof(uint32_t)) &&//within the flash area
+		    (uint32_t)entry[0].end > (uint32_t)entry[0].start) {//end > start
 			sig_idx = entry[0].signature_idx;
 
 			/* The signature idx for the first app must be within the TOC, and

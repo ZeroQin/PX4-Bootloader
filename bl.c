@@ -71,17 +71,20 @@
 //
 // Expected workflow (protocol 3) is:
 //
-// GET_SYNC		verify that the board is present
-// GET_DEVICE		determine which board (select firmware to upload)
-// CHIP_ERASE		erase the program area and reset address counter
-// loop:
+// GET_SYNC		verify that the board is present 验证是否存在 baord
+// GET_DEVICE		determine which board (select firmware to upload) 根据 board 选择固件上传
+// CHIP_ERASE		erase the program area and reset address counter 擦除程序区域，重置地址计数器
+// loop://写入程序
 //      PROG_MULTI      program bytes
-// GET_CRC		verify CRC of entire flashable area
-// RESET		finalise flash programming, reset chip and starts application
+// GET_CRC		verify CRC of entire flashable area 验证整个 flashable 区域的 CRC
+// RESET		finalise flash programming,reset chip and starts application 完成flash 编程，重置chip，开启应用程序
 //
 
-#define BL_PROTOCOL_VERSION 		5		// The revision of the bootloader protocol
+#define BL_PROTOCOL_VERSION 		5		// The revision of the bootloader protocol //bl协议版本
 //* Next revision needs to update
+
+
+// <opcode> and <status> values
 
 // protocol bytes
 #define PROTO_INSYNC				0x12    // 'in sync' byte sent before status
@@ -409,7 +412,7 @@ jump_to_app()
 	arch_setvtor((uint32_t)vec_base);
 
 	/* extract the stack and entrypoint from the app vector table and go */
-	do_jump(app_base[0], app_base[1]);
+	do_jump(app_base[0], app_base[1]);//栈顶 和向量表进入点
 }
 
 volatile unsigned timer[NTIMERS];
@@ -513,7 +516,7 @@ cin_wait(unsigned timeout)
 	int c = -1;
 
 	/* start the timeout */
-	timer[TIMER_CIN] = timeout;
+	timer[TIMER_CIN] = timeout;//当 timeout = 0,以下循环会只执行一次
 
 	do {
 		c = cin(board_get_devices());
@@ -613,7 +616,7 @@ bootloader(unsigned timeout)
 
 	/* if we are working with a timeout, start it running */
 	if (timeout) {
-		timer[TIMER_BL_WAIT] = timeout;
+		timer[TIMER_BL_WAIT] = timeout;//timeout 仅仅在这儿初始化了 TIMER_BL_WAIT ；第一次以后的while 里都为0
 	}
 
 	/* make the LED blink while we are idle */
@@ -632,7 +635,7 @@ bootloader(unsigned timeout)
 
 		do {
 			/* if we have a timeout and the timer has expired, return now */
-			if (timeout && !timer[TIMER_BL_WAIT]) {
+			if (timeout && !timer[TIMER_BL_WAIT]) {//第一次等待到时间耗尽都没有读到一个 byte 就跳出 主while
 				return;
 			}
 
@@ -655,10 +658,10 @@ bootloader(unsigned timeout)
 
 			/* expect EOC */
 			if (!wait_for_eoc(2)) {
-				goto cmd_bad;
+				goto cmd_bad; //bl_state =0
 			}
 
-			SET_BL_FIRST_STATE(STATE_PROTO_GET_SYNC);
+			SET_BL_FIRST_STATE(STATE_PROTO_GET_SYNC);//bl_state |= 0x01
 			break;
 
 		// get device info
@@ -713,7 +716,7 @@ bootloader(unsigned timeout)
 				goto cmd_bad;
 			}
 
-			SET_BL_STATE(STATE_PROTO_GET_DEVICE);
+			SET_BL_STATE(STATE_PROTO_GET_DEVICE); //bl_state |= 0x02
 			break;
 
 		// erase and prepare for programming
@@ -731,23 +734,23 @@ bootloader(unsigned timeout)
 
 #if defined(TARGET_HW_PX4_FMU_V4) || defined(TARGET_HW_UVIFY_CORE)
 
-			if (check_silicon()) {
+			if (check_silicon()) { //f1 alwayes return 0
 				goto bad_silicon;
 			}
 
 #endif
 
-			if ((bl_state & STATE_ALLOWS_ERASE) != STATE_ALLOWS_ERASE) {
+			if ((bl_state & STATE_ALLOWS_ERASE) != STATE_ALLOWS_ERASE) { 
 				goto cmd_bad;
 			}
 
 			// clear the bootloader LED while erasing - it stops blinking at random
 			// and that's confusing
-			led_set(LED_ON);
+			led_set(LED_ON);//LED_BOOTLOADER ON
 
 			// erase all sectors
-			arch_flash_unlock();
-
+			arch_flash_unlock();//清楚 unlock 标志；授权 FPEC 访问
+			//遍历擦除所有扇区
 			for (int i = 0; flash_func_sector_size(i) != 0; i++) {
 				flash_func_erase_sector(i);
 			}
@@ -755,14 +758,14 @@ bootloader(unsigned timeout)
 			// disable the LED while verifying the erase
 			led_set(LED_OFF);
 
-			// verify the erase
+			// verify the erase 
 			for (address = 0; address < board_info.fw_size; address += 4)
 				if (flash_func_read_word(address) != 0xffffffff) {
 					goto cmd_fail;
 				}
 
 			address = 0;
-			SET_BL_STATE(STATE_PROTO_CHIP_ERASE);
+			SET_BL_STATE(STATE_PROTO_CHIP_ERASE); //bl_state |= 0x4
 
 			// resume blinking
 			led_set(LED_BLINK);
@@ -783,16 +786,16 @@ bootloader(unsigned timeout)
 				goto cmd_bad;
 			}
 
-			// sanity-check arguments
+			// sanity-check arguments 合理性检查，4 字节对齐
 			if (arg % 4) {
 				goto cmd_bad;
 			}
 
-			if ((address + arg) > board_info.fw_size) {
+			if ((address + arg) > board_info.fw_size) { //写入程序大于程序flash内存
 				goto cmd_bad;
 			}
 
-			if ((unsigned int)arg > sizeof(flash_buffer.c)) {
+			if ((unsigned int)arg > sizeof(flash_buffer.c)) {//每次传入字节数小于 buffer容量
 				goto cmd_bad;
 			}
 
@@ -841,7 +844,7 @@ bootloader(unsigned timeout)
 				address += 4;
 			}
 
-			SET_BL_STATE(STATE_PROTO_PROG_MULTI);
+			SET_BL_STATE(STATE_PROTO_PROG_MULTI);//bl_state |= 0x08
 
 			break;
 
@@ -874,7 +877,7 @@ bootloader(unsigned timeout)
 			}
 
 			cout_word(sum);
-			SET_BL_STATE(STATE_PROTO_GET_CRC);
+			SET_BL_STATE(STATE_PROTO_GET_CRC); // bl_state |= 0x10
 			break;
 
 #ifndef NO_OTP_SN_CHIP
@@ -883,7 +886,7 @@ bootloader(unsigned timeout)
 		//
 		// command:			GET_OTP/<addr:4>/EOC
 		// reply:			<value:4>/INSYNC/OK
-		case PROTO_GET_OTP:
+		case PROTO_GET_OTP: //从flash 读出host 指定数据返回来验证
 			// expect argument
 			{
 				uint32_t index = 0;
@@ -928,7 +931,7 @@ bootloader(unsigned timeout)
 				cout_word(flash_func_read_sn(index));
 			}
 
-			SET_BL_STATE(STATE_PROTO_GET_SN);
+			SET_BL_STATE(STATE_PROTO_GET_SN); //bl_state |= 0x 40
 			break;
 
 		// read the chip ID code
@@ -941,8 +944,8 @@ bootloader(unsigned timeout)
 					goto cmd_bad;
 				}
 
-				cout_word(get_mcu_id());
-				SET_BL_STATE(STATE_PROTO_GET_CHIP);
+				cout_word(get_mcu_id());//IDCODE
+				SET_BL_STATE(STATE_PROTO_GET_CHIP); //bl_state |= 0x 80
 			}
 			break;
 
@@ -959,10 +962,10 @@ bootloader(unsigned timeout)
 					goto cmd_bad;
 				}
 
-				len = get_mcu_desc(len, buffer);
+				len = get_mcu_desc(len, buffer);//MCU 描述  STM32F1xxx,?
 				cout_word(len);
 				cout(buffer, len);
-				SET_BL_STATE(STATE_PROTO_GET_CHIP_DES);
+				SET_BL_STATE(STATE_PROTO_GET_CHIP_DES);//bl_state |= 0x 100
 			}
 			break;
 #endif
@@ -976,7 +979,7 @@ bootloader(unsigned timeout)
 				  board to delay for at least a
 				  specified number of seconds on boot.
 				 */
-				int v = cin_wait(100);
+				int v = cin_wait(100);//suppose 30
 
 				if (v < 0) {
 					goto cmd_bad;
@@ -1001,7 +1004,7 @@ bootloader(unsigned timeout)
 					goto cmd_bad;
 				}
 
-				uint32_t value = (BOOT_DELAY_SIGNATURE1 & 0xFFFFFF00) | boot_delay;
+				uint32_t value = (BOOT_DELAY_SIGNATURE1 & 0xFFFFFF00) | boot_delay;//BOOT_DELAY_SIGNATURE1 的低两位设为 boot_delay
 				flash_func_write_word(BOOT_DELAY_ADDRESS, value);
 
 				if (flash_func_read_word(BOOT_DELAY_ADDRESS) != value) {
@@ -1023,7 +1026,7 @@ bootloader(unsigned timeout)
 				goto cmd_bad;
 			}
 
-			if (first_word != 0xffffffff && (bl_state & STATE_ALLOWS_REBOOT) != STATE_ALLOWS_REBOOT) {
+			if (first_word != 0xffffffff && (bl_state & STATE_ALLOWS_REBOOT) != STATE_ALLOWS_REBOOT) { //要求完成过 GET_SYNC且目前未知未出过错
 				goto cmd_bad;
 			}
 
@@ -1060,7 +1063,7 @@ bootloader(unsigned timeout)
 
 		// Set the bootloader port based on the port from which we received the first valid command
 		if (bl_type == NONE) {
-			bl_type = last_input;
+			bl_type = last_input;//输入设备 USB or USART
 		}
 
 		// send the sync response for this command

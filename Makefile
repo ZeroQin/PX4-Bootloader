@@ -6,9 +6,9 @@
 # Paths to common dependencies
 #
 export BUILD_DIR_ROOT ?= build
-export BL_BASE		?= $(wildcard .)
-export LIBOPENCM3	?= $(wildcard libopencm3)
-export LIBKINETIS  	?= $(wildcard lib/kinetis/NXP_Kinetis_Bootloader_2_0_0)
+export BL_BASE		?= $(wildcard .)#本地工程所在目录
+export LIBOPENCM3	?= $(wildcard libopencm3)#libopencm3 所在目录
+export LIBKINETIS  	?= $(wildcard lib/kinetis/NXP_Kinetis_Bootloader_2_0_0)#飞思卡尔的 bootloader
 MKFLAGS=--no-print-directory
 
 SRC_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -23,13 +23,27 @@ endef
 #
 # Tools
 #
-export CC	 	 = arm-none-eabi-gcc
-export OBJCOPY		 = arm-none-eabi-objcopy
+export CC	 	 = arm-none-eabi-gcc#定义交叉编译工具
+export OBJCOPY		 = arm-none-eabi-objcopy#定义二进制生成工具链变量
 
 #
 # Common configuration
+#-std=gnu99 \#使用GNU99的优化C语言标准
+#-Os \#专门针对生成目标文件大小进行
+#-g \#生成调试信息
+#-Wundef \#当没有定义的符号出现在#if中时警告
+#-Wall \#打开一些有用的警告选项
+#-fno-builtin \#不接收没有 __buildin__ 前缀的函数作为内建函数
+#-I$(BL_BASE)/$(LIBOPENCM3)/include \#包含开源库 libopencm3 的头文件
+#-I$(BL_BASE)/. \#包含当前目录
+#-ffunction-sections \#要求编译器未每个function分配独立的section
+#-nostartfiles \#链接时不使用标准的启动文件 ?
+#-lnosys \#链接 libnosys.a 文件,其中所有函数都是空的；程序并不实际使用系统函数，但是某些代码引用了系统函数，引入 libnosys，以便通过编译
+#-Wl,-gc-sections \#传递-gc-section 给链接器，删除没有使用的section
+#-Wl,-g \#传递-g 选项给链接器，兼容其它工具
+#-Werror#把警告当作错误，出现警告就放弃编译
 #
-export FLAGS		 = -std=gnu99 \
+export FLAGS		 = -std=gnu99\
 			   -Os \
 			   -g \
 			   -Wundef \
@@ -48,7 +62,7 @@ ifneq ($(CRYPTO_HAL),)
 include crypto_hal/$(CRYPTO_HAL)/Makefile.include
 endif
 
-export COMMON_SRCS	 = bl.c $(CRYPTO_SRCS)
+export COMMON_SRCS	 = bl.c $(CRYPTO_SRCS)#定义通用源文件变量
 
 export ARCH_SRCS	 = cdcacm.c  usart.c
 
@@ -57,7 +71,7 @@ export ARCH_SRCS	 = cdcacm.c  usart.c
 # Bootloaders to build
 # Note: px4fmuv3_bl is the same as px4fmuv2_bl except for a different USB device
 # string
-#
+##定义编译目标
 TARGETS	= \
 	aerofcv1_bl \
 	auavx2v1_bl \
@@ -88,9 +102,9 @@ TARGETS	= \
 	smartap_pro_bl \
 	tapv1_bl \
 	uvify_core_bl
-
+#编译目标all=$(TARGETS) sizes
 all:	$(TARGETS) sizes
-
+#定义清理工程的操作
 clean:
 	cd libopencm3 && make --no-print-directory clean && cd ..
 	rm -f *.elf *.bin *.map # Remove any elf or bin files contained directly in the Bootloader directory
@@ -98,6 +112,7 @@ clean:
 
 #
 # Specific bootloader targets.
+#各编译目标的具体操作，主要规定了编译需要使用的Makefile文件，硬件目标TARGET_HW，链接脚本LINKER_FILE，编译目标TARGET_FILE_NAME
 #
 
 fmuk66v3_bl: $(MAKEFILE_LIST) $(LIBKINETIS)
@@ -203,6 +218,7 @@ sizes:
 
 #
 # Binary management
+#二进制文件压缩操作：deploy命令
 #
 .PHONY: deploy
 deploy:
@@ -210,6 +226,9 @@ deploy:
 
 #
 # Submodule management
+#子模块libopencm3操作与管理，进行的操作如下：
+# 1. 更新git子工程libopencm3。
+# 2. 调用Tools/check_submodules.sh检查当前libopencm3的版本信息是否正确。
 #
 
 $(LIBOPENCM3): checksubmodules
@@ -218,6 +237,11 @@ $(LIBOPENCM3): checksubmodules
 .PHONY: checksubmodules
 checksubmodules:
 	$(Q) ($(BL_BASE)/Tools/check_submodules.sh)
+
+.PHONY: updatesubmodules
+updatesubmodules:
+	$(Q) (git submodule init)
+	$(Q) (git submodule update)
 
 # Astyle
 # --------------------------------------------------------------------

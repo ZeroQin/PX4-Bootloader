@@ -15,10 +15,10 @@
 
 #include "bl.h"
 
-#define UDID_START      0x1FFFF7E8
+#define UDID_START      0x1FFFF7E8 //Unique ID address of F1
 
 // address of MCU IDCODE
-#define DBGMCU_IDCODE		0xE0042000
+#define DBGMCU_IDCODE		0xE0042000 //用于确定STM32型号的 DEGMCU_IDCODE address of F10x
 
 
 #ifdef INTERFACE_USART
@@ -29,11 +29,11 @@
 
 /* board definition */
 struct boardinfo board_info = {
-	.board_type	= BOARD_TYPE,
+	.board_type	= BOARD_TYPE, //5,9,11,13....
 	.board_rev	= 0,
-	.fw_size	= APP_SIZE_MAX,
+	.fw_size	= APP_SIZE_MAX,//0xf000 for V1 or V2,0x3f000 for V3  //(BOARD_FLASH_SIZE - (BOOTLOADER_RESERVATION_SIZE + APP_RESERVATION_SIZE))
 
-	.systick_mhz	= OSC_FREQ,
+	.systick_mhz	= OSC_FREQ, //FMU(24 for V1-V4,V4pro; 16 V5,V5x;8 V2;)  24 FLOW_V1;8 DISCOVERY_V1;PIO(24...)....
 };
 
 static void board_init(void);
@@ -41,7 +41,7 @@ static void board_init(void);
 uint32_t
 board_get_devices(void)
 {
-	return BOOT_DEVICES_SELECTION;
+	return BOOT_DEVICES_SELECTION;//USB0_DEV|SERIAL0_DEV|SERIAL1_DEV
 }
 
 static void
@@ -52,7 +52,7 @@ board_init(void)
 	gpio_set_mode(BOARD_PORT_LEDS,
 		      GPIO_MODE_OUTPUT_50_MHZ,
 		      GPIO_CNF_OUTPUT_PUSHPULL,
-		      BOARD_PIN_LED_BOOTLOADER | BOARD_PIN_LED_ACTIVITY);
+		      BOARD_PIN_LED_BOOTLOADER | BOARD_PIN_LED_ACTIVITY);//LED_BOOTLOADER | LED_ACTIVITY
 	BOARD_LED_ON(
 		BOARD_PORT_LEDS,
 		BOARD_PIN_LED_BOOTLOADER | BOARD_PIN_LED_ACTIVITY);
@@ -252,7 +252,7 @@ led_on(unsigned led)
 		break;
 
 	case LED_BOOTLOADER:
-		BOARD_LED_ON(BOARD_PORT_LEDS, BOARD_PIN_LED_BOOTLOADER);
+		BOARD_LED_ON(BOARD_PORT_LEDS, BOARD_PIN_LED_BOOTLOADER);//gpio_clear(uint32_t gpioport, uint8_t gpios)
 		break;
 	}
 }
@@ -290,7 +290,7 @@ should_wait(void)
 {
 	bool result = false;
 
-	PWR_CR |= PWR_CR_DBP;
+	PWR_CR |= PWR_CR_DBP;//Disable backup domain write protection 
 
 	if (BKP_DR1 == BL_WAIT_MAGIC) {
 		result = true;

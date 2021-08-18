@@ -2,12 +2,12 @@
 # Common rules for makefiles for the PX4 bootloaders
 #
 
-BUILD_DIR	 = $(BUILD_DIR_ROOT)/$(TARGET_FILE_NAME)
+BUILD_DIR	 = $(BUILD_DIR_ROOT)/$(TARGET_FILE_NAME)#./build/px4fmuv2_bl
 
-COBJS		:= $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.o,$(SRCS)))
-AOBJS		:= $(addprefix $(BUILD_DIR)/, $(patsubst %.S,%.o,$(ASRCS)))
-SUBDIRS		:= $(sort $(addprefix $(BUILD_DIR)/, $(dir $(ASRCS))) $(addprefix $(BUILD_DIR)/, $(dir $(SRCS))) )
-OBJS		:= $(COBJS) $(AOBJS)
+COBJS		:= $(addprefix $(BUILD_DIR)/, $(patsubst %.c,%.o,$(SRCS)))#./build/.../%.o
+AOBJS		:= $(addprefix $(BUILD_DIR)/, $(patsubst %.S,%.o,$(ASRCS)))#./build/.../%.S
+SUBDIRS		:= $(sort $(addprefix $(BUILD_DIR)/, $(dir $(ASRCS))) $(addprefix $(BUILD_DIR)/, $(dir $(SRCS))) )#所有目标文件子目录(.o .s)
+OBJS		:= $(COBJS) $(AOBJS)#所有目标文件
 DEPS		:= $(COBJS:.o=.d)
 
 ELF		 = $(BUILD_DIR)/$(TARGET_FILE_NAME).elf

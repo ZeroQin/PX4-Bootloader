@@ -53,7 +53,7 @@ enum {
 /* board info forwarded from board-specific code to booloader */
 struct boardinfo {
 	uint32_t	board_type;
-	uint32_t	board_rev;
+	uint32_t	board_rev;//修订版本，几乎没有用到
 	uint32_t	fw_size;
 	uint32_t	systick_mhz;		/* systick input clock */
 

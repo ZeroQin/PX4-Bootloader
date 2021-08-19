@@ -10,20 +10,22 @@ SUBDIRS		:= $(sort $(addprefix $(BUILD_DIR)/, $(dir $(ASRCS))) $(addprefix $(BUI
 OBJS		:= $(COBJS) $(AOBJS)#所有目标文件
 DEPS		:= $(COBJS:.o=.d)
 
-ELF		 = $(BUILD_DIR)/$(TARGET_FILE_NAME).elf
-HEX		 = $(BUILD_DIR)/$(TARGET_FILE_NAME).hex
-BINARY		 = $(BUILD_DIR)/$(TARGET_FILE_NAME).bin
+ELF		 = $(BUILD_DIR)/$(TARGET_FILE_NAME).elf#./build/target/target.elf
+HEX		 = $(BUILD_DIR)/$(TARGET_FILE_NAME).hex#./build/target/target.hex
+BINARY		 = $(BUILD_DIR)/$(TARGET_FILE_NAME).bin#./build/target/target.bin
 
 FLAGS		+= -Xlinker -Map=$(BUILD_DIR)/${TARGET_FILE_NAME}.map
 
 all:	debug $(BUILD_DIR) $(ELF) $(BINARY) $(HEX)
 
 debug:
-#	@echo SRCS=$(SRCS)
-#	@echo COBJS=$(COBJS)
-#	@echo ASRCS=$(ASRCS)
-#	@echo AOBJS=$(AOBJS)
-#	@echo SUBDIRS=$(SUBDIRS)
+	@echo ARCH=$(ARCH)xx
+	@echo ARCH_SRCS=$(ARCH_SRCS)
+	@echo SRCS=$(SRCS)
+	@echo COBJS=$(COBJS)
+	@echo ASRCS=$(ASRCS)
+	@echo AOBJS=$(AOBJS)
+	@echo SUBDIRS=$(SUBDIRS)
 
 
 # Compile and generate dependency files
@@ -36,8 +38,13 @@ $(BUILD_DIR)/%.o:	%.S
 	$(CC) -c -MMD $(FLAGS) -o $@ $*.S
 
 # Make the build directory
-$(BUILD_DIR) $(SUBDIRS):
-	mkdir -p $(BUILD_DIR) $(SUBDIRS)
+$(BUILD_DIR):
+	$(shell mkdir -p $(BUILD_DIR) >/dev/null)
+	$(shell mkdir -p $(SUBDIRS) >/dev/null)
+#$(SUBDIRS):
+#	@echo mkdir $(BUILD_DIR) $(SUBDIRS)
+#	$(shell mkdir -p $(BUILD_DIR)) >/dev/null)
+#	mkdir -p $(BUILD_DIR) $(SUBDIRS)
 
 $(ELF):		$(OBJS) $(MAKEFILE_LIST)
 	$(CC) -o $@ $(OBJS) $(FLAGS)
@@ -47,6 +54,12 @@ $(BINARY):	$(ELF)
 
 $(HEX):	$(ELF)
 	$(OBJCOPY) -Oihex $(ELF) $(HEX)
+	
+%.d: %.c
+	set -e; rm -f $@; \
+	$(CC) -MM $(FLAGS) $< > $@.$$$$; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
 
 # Dependencies for .o files
--include $(DEPS)
+-include $(DEPS)#包括这些文件，如果没找到则忽略

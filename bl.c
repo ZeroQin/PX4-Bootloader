@@ -80,38 +80,38 @@
 // RESET		finalise flash programming,reset chip and starts application 完成flash 编程，重置chip，开启应用程序
 //
 
-#define BL_PROTOCOL_VERSION 		5		// The revision of the bootloader protocol //bl协议版本
+#define BL_PROTOCOL_VERSION 		5		// 协议版本信息 The revision of the bootloader protocol //bl协议版本
 //* Next revision needs to update
 
 
 // <opcode> and <status> values
 
-// protocol bytes
-#define PROTO_INSYNC				0x12    // 'in sync' byte sent before status
-#define PROTO_EOC					0x20    // end of command
+//  protocol bytes 协议字
+#define PROTO_INSYNC				0x12    // 'in sync' byte sent before stat 同步字
+#define PROTO_EOC					0x20    // end of command 命令终止字
 
-// Reply bytes
-#define PROTO_OK					0x10    // INSYNC/OK      - 'ok' response
-#define PROTO_FAILED				0x11    // INSYNC/FAILED  - 'fail' response
-#define PROTO_INVALID				0x13	// INSYNC/INVALID - 'invalid' response for bad commands
-#define PROTO_BAD_SILICON_REV 		0x14 	// On the F4 series there is an issue with < Rev 3 silicon
+// Reply bytes 回告字
+#define PROTO_OK					0x10    // INSYNC/OK      - 'ok' response 指令运行成功
+#define PROTO_FAILED				0x11    // INSYNC/FAILED  - 'fail' response 指令运行错误
+#define PROTO_INVALID				0x13	// INSYNC/INVALID - 非法指令 'invalid' response for bad commands
+#define PROTO_BAD_SILICON_REV 		0x14 	// 主控MCU版本错误 On the F4 series there is an issue with < Rev 3 silicon
 #define PROTO_RESERVED_0X15     0x15  // Reserved
 
 // see https://pixhawk.org/help/errata
-// Command bytes
-#define PROTO_GET_SYNC				0x21    // NOP for re-establishing sync
-#define PROTO_GET_DEVICE			0x22    // get device ID bytes
-#define PROTO_CHIP_ERASE			0x23    // erase program area and reset program address
-#define PROTO_PROG_MULTI			0x27    // write bytes at program address and increment
-#define PROTO_GET_CRC				0x29	// compute & return a CRC
-#define PROTO_GET_OTP				0x2a	// read a byte from OTP at the given address
-#define PROTO_GET_SN				0x2b    // read a word from UDID area ( Serial)  at the given address
-#define PROTO_GET_CHIP				0x2c    // read chip version (MCU IDCODE)
-#define PROTO_SET_DELAY				0x2d    // set minimum boot delay
-#define PROTO_GET_CHIP_DES			0x2e    // read chip version In ASCII
-#define PROTO_BOOT					0x30    // boot the application
-#define PROTO_DEBUG					0x31    // emit debug information - format not defined
-#define PROTO_SET_BAUD				0x33    // set baud rate on uart
+// Command bytes 命令字
+#define PROTO_GET_SYNC				0x21    // NOP for re-establishing sync 获取同步命令
+#define PROTO_GET_DEVICE			0x22    // get device ID bytes 获取设备ID
+#define PROTO_CHIP_ERASE			0x23    //擦除flash与准备烧写飞控固件 erase program area and reset program address
+#define PROTO_PROG_MULTI			0x27    //烧写flash write bytes at program address and increment
+#define PROTO_GET_CRC				0x29	//计算CRC校验 compute & return a CRC
+#define PROTO_GET_OTP				0x2a	//读取OTP区域某地址的1字节 read a byte from OTP at the given address
+#define PROTO_GET_SN				0x2b    //读取MCU的UDID read a word from UDID area ( Serial)  at the given address
+#define PROTO_GET_CHIP				0x2c    //读取芯片ID和版本 read chip version (MCU IDCODE)
+#define PROTO_SET_DELAY				0x2d    //设置飞控固件启动等待时间 set minimum boot delay
+#define PROTO_GET_CHIP_DES			0x2e    //获取芯片描述信息 read chip version In ASCII
+#define PROTO_BOOT					0x30    //完成烧写并启动飞控固件 boot the application
+#define PROTO_DEBUG					0x31    //输出调试信息 emit debug information - format not defined
+#define PROTO_SET_BAUD				0x33    //设置串口波特率 set baud rate on uart
 
 #define PROTO_RESERVED_0X36     0x36  // Reserved
 #define PROTO_RESERVED_0X37     0x37  // Reserved
@@ -121,12 +121,12 @@
 #define PROTO_PROG_MULTI_MAX    64	// maximum PROG_MULTI size
 #define PROTO_READ_MULTI_MAX    255	// size of the size field
 
-/* argument values for PROTO_GET_DEVICE */
-#define PROTO_DEVICE_BL_REV	1	// bootloader revision
-#define PROTO_DEVICE_BOARD_ID	2	// board ID
-#define PROTO_DEVICE_BOARD_REV	3	// board revision
-#define PROTO_DEVICE_FW_SIZE	4	// size of flashable area
-#define PROTO_DEVICE_VEC_AREA	5	// contents of reserved vectors 7-10
+/* argument values for PROTO_GET_DEVICE 命令PROTO_GET_DEVICE参数*/
+#define PROTO_DEVICE_BL_REV	1	// bootloader revision 协议版本
+#define PROTO_DEVICE_BOARD_ID	2	// board ID 板载处理器编号
+#define PROTO_DEVICE_BOARD_REV	3	// board revision 修订版本
+#define PROTO_DEVICE_FW_SIZE	4	// size of flashable area 最大固件空间
+#define PROTO_DEVICE_VEC_AREA	5	// contents of reserved vectors 7-10 飞控固件向量表7-10项的函数地址（debug_monitor、sv_call、pend_sv、systick）
 
 // State
 #define STATE_PROTO_GET_SYNC      0x1     // Have Seen NOP for re-establishing sync
@@ -152,8 +152,8 @@
 #  define SET_BL_FIRST_STATE(s)   bl_state |= (s)
 #endif
 
-static uint8_t bl_type;
-static uint8_t last_input;
+static uint8_t bl_type;/* bl_type：接口类型静态全局变量，被bootloader函数定义 */
+static uint8_t last_input;/* last_input：静态全局变量，上次获取串口数据的方式 */
 
 inline void cinit(void *config, uint8_t interface)
 {
@@ -181,9 +181,20 @@ inline void cfini(void)
 	uart_cfini();
 #endif
 }
+
+
+/* 获取串口数据函数，可为USART和USB虚拟串口 */
+
 inline int cin(uint32_t devices)
 {
-#if INTERFACE_USB
+#if INTERFACE_USB	/* 对主控FMU，宏INTERFACE_USART定义为1，代码有效，hw_config.h */
+					/* 对IO协处理器，宏INTERFACE_USART定义为0，代码无效，hw_config.h */
+		/* 通过串口获取调试数据，若返回的数据值有效（>=0），则返回获取的数据值，并更新全局变量last_input */
+		/* NONE：值0，枚举类，定义在bl.h */
+		/* USB：值2，枚举类，定义在bl.h */
+		/* bl_type：输入接口类型全局静态变量，被bootloader函数赋值 */
+		/* last_input：全局变量上次获取串口数据的方式 */
+		/* usb_cin：从USB模拟串口读入1个字，定义在cdcacm.c */
 
 	if ((bl_type == NONE || bl_type == USB) && (devices & USB0_DEV) != 0) {
 		int usb_in = usb_cin();
@@ -196,7 +207,13 @@ inline int cin(uint32_t devices)
 
 #endif
 
-#if INTERFACE_USART
+#if INTERFACE_USART	/* 宏INTERFACE_USART定义为1，代码有效，hw_config.h */
+		/* 通过串口获取调试数据，若返回的数据值有效（>=0），则返回获取的数据值，并更新全局变量last_input */
+		/* NONE：值0，枚举类，定义在bl.h */
+		/* USART：值1，枚举类，定义在bl.h */
+		/* bl_type：输入接口类型全局静态变量，被bootloader函数赋值 */
+		/* last_input：全局变量上次获取串口数据的方式 */
+		/* uart_cin：从串口读入1个字，定义在usart.c */
 
 	if ((bl_type == NONE || bl_type == USART) && (devices & SERIAL0_DEV) != 0) {
 		int	uart_in = uart_cin();
@@ -212,9 +229,15 @@ inline int cin(uint32_t devices)
 	return -1;
 }
 
+
+/* 串口或模拟串口输出特定内容的函数 */
 inline void cout(uint8_t *buf, unsigned len)
 {
-#if INTERFACE_USB
+#if INTERFACE_USB/* 对主控FMU，宏INTERFACE_USART定义为1，代码有效，hw_config.h */
+				 /* 对IO协处理器，宏INTERFACE_USART定义为0，代码无效，hw_config.h */
+	/* USB：值2，枚举类，定义在bl.h */
+	/* bl_type：启动接口类型全局静态变量，被bootloader函数赋值 */
+	/* usb_cout：USB模拟串口输出特定内容的函数，定义在usart.c */
 
 	if (bl_type == USB) {
 		usb_cout(buf, len);
@@ -255,12 +278,12 @@ inline void cout(uint8_t *buf, unsigned len)
 
 #endif
 
-static const uint32_t	bl_proto_rev = BL_PROTOCOL_VERSION;	// value returned by PROTO_DEVICE_BL_REV
+static const uint32_t	bl_proto_rev = BL_PROTOCOL_VERSION;	// 5，表示Bootloader协议版本 value returned by PROTO_DEVICE_BL_REV
 
 static unsigned head, tail;
 static uint8_t rx_buf[256] USB_DATA_ALIGN;
 
-static enum led_state {LED_BLINK, LED_ON, LED_OFF} _led_state;
+static enum led_state {LED_BLINK, LED_ON, LED_OFF} _led_state;/* _led_state：LED状态枚举型变量 */
 
 void sys_tick_handler(void);
 
@@ -288,21 +311,27 @@ buf_get(void)
 	return ret;
 }
 
+
+/* do_jump函数，重置堆栈指针并跳转至飞控固件入口的函数，jump_to_app函数的终极目标 */
+
 static void
 do_jump(uint32_t stacktop, uint32_t entrypoint)
 {
-	asm volatile(
-		"msr msp, %0	\n"
-		"bx	%1	\n"
-		: : "r"(stacktop), "r"(entrypoint) :);
+	/* 汇编嵌入C语言代码 */
+	asm volatile(/* 汇编代码声明 */
+		"msr msp, %0	\n"/* msr：无条件赋值指令，msp：主堆栈寄存器，%0：0号输入（stacktop）。将stacktop赋值给msp */
+		"bx	%1	\n"			/* bx：寄存器寻址跳转指令，%1：1号输入（entrypoint）。程序跳转至寄存器entrypoint */
+		: : "r"(stacktop), "r"(entrypoint) :);/* 定义汇编代码中%0代表stacktop，%1代表entrypoint */
 
 	// just to keep noreturn happy
+	/* 程序应该不会运行到这里，如果不幸到了，进入死循环 */
 	for (;;) ;
 }
 
 void
 jump_to_app()
 {
+	/* APP_LOAD_ADDRESS，值0x08004000（主控FMU）0x08001000（IO协处理器），飞控固件起始地址（hw_config.h） */
 	const uint32_t *app_base = (const uint32_t *)APP_LOAD_ADDRESS;
 	const uint32_t *vec_base = (const uint32_t *)app_base;
 
@@ -310,6 +339,8 @@ jump_to_app()
 	 * We refuse to program the first word of the app until the upload is marked
 	 * complete by the host.  So if it's not 0xffffffff, we should try booting it.
 	 */
+	 /* 1. 根据飞控固件的烧写约定，检测固件是否有效 */
+	/* 飞控固件烧写时，我们特意约定最后烧写固件的首地址（飞控固件使用的堆栈首地址）。若固件首地址为0xffffffff，表明固件烧写未完成（或固件无效）无法跳转，函数直接返回 */
 	if (app_base[0] == 0xffffffff) {
 		return;
 	}
@@ -385,6 +416,7 @@ jump_to_app()
 	 * The second word of the app is the entrypoint; it must point within the
 	 * flash area (or we have a bad flash).
 	 */
+	 /*地址范围检测*/
 	if (app_base[1] < APP_LOAD_ADDRESS) {
 		return;
 	}
@@ -393,29 +425,48 @@ jump_to_app()
 		return;
 	}
 
+	
+	/* 2. 现在飞控固件有效，反向初始化以便把外设控制权交给飞控固件 */
+	/* flash_lock：主控FMU，锁定flash，操作寄存器FLASH_CR的域LOCK（bit31），定义libopencm3/lib/stm32/common/flash_common_f234.c */
+	/* flash_lock：IO协处理器，锁定flash，操作寄存器FLASH_CR的域LOCK（bit7），定义libopencm3/lib/stm32/common/flash_common_f01.c */
+	/* bootloader程序中可能解锁flash进行固件烧写功能，这里确保flash上锁 */
+
 	/* just for paranoia's sake */
 	arch_flash_lock();
 
 	/* kill the systick interrupt */
+	/* 关闭systick中断（libopencm3/lib/cm3/systick.c） */
+	/* systick倒计时关闭（libopencm3/lib/cm3/systick.c） */
 	arch_systic_deinit();
 
 	/* deinitialise the interface */
+	/* 关闭串口USART2和USB虚拟串口，配置不变 */
+	/* cfini：串口反向初始化函数，即关闭串口和USB虚拟串口，定义在main_f?.c */
 	cfini();
 
 	/* reset the clock */
+	/* 关闭时钟源，将所有内部时钟设置为重启后的初始状态 */
+	/* clock_deinit：时钟反向初始化函数，定义在main_f?.c */
 	clock_deinit();
 
 	/* deinitialise the board */
+	/* 反向初始化板载外设（包括USART2、LED控制） */
+	/* board_deinit：板载外设反向初始化函数，定义在main_f?.c */
 	board_deinit();
 
 	/* switch exception handlers to the application */
+	
+	/* 3. 更改向量表地址至飞控固件的向量表 */
+	/* SCB_VTOR：寄存器，向量表偏移地址，地址0xE000ED08 */
+	/* APP_LOAD_ADDRESS：飞控固件起始地址。0x08004000（主控FMU），0x08001000（IO协处理器） */
 	arch_setvtor((uint32_t)vec_base);
 
 	/* extract the stack and entrypoint from the app vector table and go */
+	/* 4. 重置堆栈并跳转至飞控固件 */
 	do_jump(app_base[0], app_base[1]);//栈顶 和向量表进入点
 }
 
-volatile unsigned timer[NTIMERS];
+volatile unsigned timer[NTIMERS];/* NTIMERS：值4，通用倒计时器数量，定义在bl.h；timer：通用计时器数组变量 */
 
 void
 sys_tick_handler(void)
@@ -426,12 +477,21 @@ sys_tick_handler(void)
 		if (timer[i] > 0) {
 			timer[i]--;
 		}
-
+	/* 处理B/E LED（主控FMU为LED701，IO协处理器为LED703）闪烁功能 */
+	/* 时钟设为50ms，每个周期就是100ms。 */
+	/* _led_state：全局LED状态枚举（led_state枚举型）变量，存储B/E LED的状态，定义在bl.c */
+	/* TIMER_LED：值2，定义在bl.h */
+	/* LED_BLINK：值0，led_state枚举型，定义在bl.c */
+	/* LED_BOOTLOADER：值2，定义在bl.h */
+	/* led_toggle：使输入的LED反向，定义在main_f?.c */
 	if ((_led_state == LED_BLINK) && (timer[TIMER_LED] == 0)) {
 		led_toggle(LED_BOOTLOADER);
 		timer[TIMER_LED] = 50;
 	}
 }
+
+
+/* 延时函数，被bootloader函数调用 */
 
 void
 delay(unsigned msec)
@@ -441,6 +501,12 @@ delay(unsigned msec)
 	while (timer[TIMER_DELAY] > 0)
 		;
 }
+
+
+/* 根据输入设置LED状态的函数，被bootloader函数调用，功能如下： */
+/* 若输入为LED_OFF，则关闭B/E LED灯 */
+/* 若输入为LED_ON，则关闭B/E LED灯 */
+/* 若输入为LED_BLINK，则2号计时器（TIMER_LED）清零，systick中断函数立即，准备闪烁B/E LED灯 */
 
 static void
 led_set(enum led_state state)

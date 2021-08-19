@@ -34,44 +34,46 @@
  */
 
 /* Define memory regions. */
+/* 声明存储区域，分为rom和ram两部分 */
 MEMORY
 {
-	rom (rx)  : ORIGIN = 0x08000000, LENGTH = 16K
-	ram (rwx) : ORIGIN = 0x20000000, LENGTH = 128K
+	rom (rx)  : ORIGIN = 0x08000000, LENGTH = 16K /*定义rom区，即片内flash的部分区域，权限为可读可执行，起始于flash起始地址*/
+	ram (rwx) : ORIGIN = 0x20000000, LENGTH = 128K/*定义ram区，即片内sram的部分区域，权限为可读可写可执行，起始于sram1起始地址*/
 }
 
 /* Enforce emmission of the vector table. */
+/*声明外部定义的 vector_table 变量，此变量被定义再libopencm3/lib/cm3/vector.c 中*/
 EXTERN (vector_table)
 
 /* Define sections. */
-SECTIONS
+SECTIONS				/* 定义段 */
 {
-	. = ORIGIN(rom);
+	. = ORIGIN(rom);	/* 链接器指针定位于rom区起始地址 */
 
-	.text : {
-		*(.vectors)		/* Vector table */
-		*(.text*)		/* Program code */
-		. = ALIGN(4);
-		*(.rodata*)		/* Read-only data */
-		. = ALIGN(4);
-	} >rom
+	.text : {			/* 定义代码段text 中断向量表*/
+		*(.vectors)		/* Vector table 定义于libopencm3/lib/cm3/vector.c文件中，仅包含vector_table变量*/
+		*(.text*)		/* Program code 程序代码段*/
+		. = ALIGN(4);	/*当前地址4字节对齐*/
+		*(.rodata*)		/* Read-only data程序只读数据段*/
+		. = ALIGN(4);	/*当前地址4节z对齐*/
+	} >rom				/*代码段text的程序地址位于rom中*/
 
 	/* C++ Static constructors/destructors, also used for __attribute__
 	 * ((constructor)) and the likes */
-	.preinit_array : {
-		. = ALIGN(4);
-		__preinit_array_start = .;
-		KEEP (*(.preinit_array))
-		__preinit_array_end = .;
-	} >rom
-	.init_array : {
+	.preinit_array : {				/*定义C++构造函数段preinit_array*/
+		. = ALIGN(4);				/*当前地址4字节对齐*/
+		__preinit_array_start = .;	/*定义变量__preinit_array_start为当前地址*/
+		KEEP (*(.preinit_array))	/*强制链接器保留preinit_array段*/
+		__preinit_array_end = .;	/*定义变量__preinit_aarray_end 为当前地址*/
+	} >rom							/*C++构造函数段preinit_array位于rom中*/
+	.init_array : {					/*定义C++构造函数段init_array */
 		. = ALIGN(4);
 		__init_array_start = .;
-		KEEP (*(SORT(.init_array.*)))
-		KEEP (*(.init_array))
+		KEEP (*(SORT(.init_array.*)))	/*强制链接器保留init_array.*段，并对满足字符串模式的内容进行升序排列*/
+		KEEP (*(.init_array))			/*强制链接器保留init_array段*/
 		__init_array_end = .;
 	} >rom
-	.fini_array : {
+	.fini_array : {						/*定义C++析构函数段fini_array*/
 		. = ALIGN(4);
 		__fini_array_start = .;
 		KEEP (*(.fini_array))
@@ -79,33 +81,33 @@ SECTIONS
 		__fini_array_end = .;
 	} >rom
 
-	. = ORIGIN(ram);
+	. = ORIGIN(ram);					/*链接器指针定位于ram起始地址*/
 
-	.data : {
-		_data = .;
-		*(.data*)		/* Read-write initialized data */
+	.data : {							/*定义数据段data*/
+		_data = .;						/*定义变量_data为当前地址*/
+		*(.data*)						/* Read-write initialized data ，程序数据段*/
 		. = ALIGN(4);
-		_edata = .;
-	} >ram AT >rom
+		_edata = .;						/*定义变量_edata 为当前地址*/
+	} >ram AT >rom						/*数据段data的程序地址位于ram中，加载地址位于rom中*/
 
-	_data_loadaddr = LOADADDR(.data);
+	_data_loadaddr = LOADADDR(.data);	/*定义变量_data_*/
 
-	.bss : {
+	.bss : {							/*定义bss段*/
 	_sbss = .;
-		*(.bss*)		/* Read-write zero initialized data */
-		*(COMMON)
+		*(.bss*)		/* Read-write zero initialized data,程序bss段 */
+		*(COMMON)						/*COMMON段*/
 		. = ALIGN(4);
 		_ebss = .;
-	} >ram
+	} >ram								/*bss段的程序地址位于ram中*/
 
 	/*
 	 * The .eh_frame section appears to be used for C++ exception handling.
 	 * You may need to fix this if you're using C++.
 	 */
-	/DISCARD/ : { *(.eh_frame) }
+	/DISCARD/ : { *(.eh_frame) }			/* 被丢弃段eh_frame不会出现在输出文件中 */
 
 	. = ALIGN(4);
 	end = .;
 }
 
-PROVIDE(_stack = 0x20020000);
+PROVIDE(_stack = 0x20020000);				/* /* 定义变量_stack，仅在被使用时生效，堆栈指针指向ram区最高地址 */

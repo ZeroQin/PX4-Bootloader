@@ -41,6 +41,7 @@ MEMORY
 }
 
 /* Enforce emmission of the vector table. */
+/* 声明外部定义的vector_table变量，此变量被定义在libopencm3/lib/cm3/vector.c中 */
 EXTERN (vector_table)
 
 /* Define sections. */
@@ -88,7 +89,7 @@ SECTIONS
 		_edata = .;
 	} >ram AT >rom
 
-	_data_loadaddr = LOADADDR(.data);
+	_data_loadaddr = LOADADDR(.data);	/* 定义变量_data_loadaddr为数据段加载地址的起始位置 */
 
 	.bss : {
 	_sbss = .;

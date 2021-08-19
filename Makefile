@@ -11,7 +11,7 @@ export LIBOPENCM3	?= $(wildcard libopencm3)#libopencm3 所在目录
 export LIBKINETIS  	?= $(wildcard lib/kinetis/NXP_Kinetis_Bootloader_2_0_0)#飞思卡尔的 bootloader
 MKFLAGS=--no-print-directory
 
-SRC_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+SRC_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))#获取指定目录或文件的绝对路径,从文件名剥离非目录的后缀
 
 COLOR_BLUE = \033[0;94m
 NO_COLOR   = \033[m
@@ -62,9 +62,9 @@ ifneq ($(CRYPTO_HAL),)
 include crypto_hal/$(CRYPTO_HAL)/Makefile.include
 endif
 
-export COMMON_SRCS	 = bl.c $(CRYPTO_SRCS)#定义通用源文件变量
+export COMMON_SRCS	 =bl.c $(CRYPTO_SRCS)#定义通用源文件变量 bl.c
 
-export ARCH_SRCS	 = cdcacm.c  usart.c
+export ARCH_SRCS	 =cdcacm.c usart.c
 
 
 #

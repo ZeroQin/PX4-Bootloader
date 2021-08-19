@@ -5,6 +5,7 @@
 
 #include "hw_config.h"
 
+
 #include <stdlib.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
@@ -20,6 +21,7 @@
 #include "uart.h"
 
 /* flash parameters that we should not really know */
+/* flash_sector 用于描述 STM32F4 芯片内部 flash 的结构,STM32F4 片内 flash 大小为 1M 或 2M 两种，具体参见芯片手册*/
 static struct {
 	uint32_t	sector_number;
 	uint32_t	size;
@@ -86,6 +88,7 @@ static struct {
 // A board may disable VBUS sensing, but still provide a (non-standard) VBUS
 // sensing pin (and use it for fast booting when USB is disconnected). If VBUS
 // sensing is enabled, only PA9 can be used.
+
 #ifndef BOARD_USB_VBUS_SENSE_DISABLED
 # define BOARD_PORT_VBUS                GPIOA
 # define BOARD_PIN_VBUS                 GPIO9
@@ -101,6 +104,10 @@ typedef enum mcu_rev_e {
 	MCU_REV_STM32F4_REV_3 = 0x2001
 } mcu_rev_e;
 
+/* 结构体 mcu_des_t 存储了 STM32F4 类 MCU 的所有型号信息，
+*  并被实体化为变量数组 mcu_descriptions，此结构用于程序中自动识别当前 MCU 类型。
+*  MCU 类型信息被存储在 DBGMCU_IDCODE 寄存器中，地址为 0xE0042000。
+*  此结构体在 check_silicon 函数中使用。*/
 typedef struct mcu_des_t {
 	uint16_t mcuid;
 	const char *desc;
@@ -117,6 +124,9 @@ mcu_des_t mcu_descriptions[] = {
 	{ STM32F42x_446xx, 	"STM32F446XX",	'?'},
 };
 
+/* 结构体 mcu_rev_t 存储了 MCU 的版本信息，它被定义在 main_f4.c 文件中，
+*  并被实体化为变量数组 silicon_revs，此结构除了可以识别处理器版本外，
+*  还可以据此判断 MCU 的内部 flash 信息。*/
 typedef struct mcu_rev_t {
 	mcu_rev_e revid;
 	char  rev;
@@ -155,11 +165,11 @@ const mcu_rev_t silicon_revs[] = {
 
 /* board definition */
 struct boardinfo board_info = {
-	.board_type	= BOARD_TYPE,
-	.board_rev	= 0,
-	.fw_size	= 0,
+	.board_type	= BOARD_TYPE,/*BOARD_TYPE板载处理器编号在hw_config.h中定义，V2主控为9。 */
+	.board_rev	= 0,/* board_rev，修订版本为0 */
+	.fw_size	= 0,/* fw_size，飞控固件大小的最大值，这里的0没有意义，在board_init函数中被重新初始化 */
 
-	.systick_mhz	= 168,
+	.systick_mhz	= 168,/* systick_mhz，系统时钟输入，即CPU主频168MHz */
 };
 
 static void board_init(void);
@@ -746,16 +756,21 @@ int
 main(void)
 {
 	bool try_boot = true;			/* try booting before we drop to the bootloader */
+	/* bootloader是否立即跳转到飞控固件入口的标志（不等待timeout） */
 	unsigned timeout = BOOTLOADER_DELAY;	/* if nonzero, drop out of the bootloader after this time */
-
+	/* bootloader初始化完毕后跳转到飞控固件入口地址时，所需等待的时间，以ms计算。
+	*宏BOOTLOADER_DELAY在hw_config.h中被定义为5000 */
+	
 	/* Enable the FPU before we hit any FP instructions */
+	/* 使能浮点运算，其功能与pre_main函数相同，实际上可以去掉。 */
 	SCB_CPACR |= ((3UL << 10 * 2) | (3UL << 11 * 2)); /* set CP10 Full Access and set CP11 Full Access */
 
-#if defined(BOARD_POWER_PIN_OUT)
+#if defined(BOARD_POWER_PIN_OUT)/* 宏BOARD_POWER_PIN_OUT未定义，下面函数不编译 */
 
 	/* Here we check for the app setting the POWER_DOWN_RTC_SIGNATURE
 	 * in this case, we reset the signature and wait to die
 	 */
+	 
 	if (board_get_rtc_signature() == POWER_DOWN_RTC_SIGNATURE) {
 		board_set_rtc_signature(0);
 
@@ -765,15 +780,34 @@ main(void)
 #endif
 
 	/* do board-specific initialisation */
+	/* 调用board_init函数，此函数在main_f4.c中被定义，功能如下： */
+	/* 1. 赋值board_info.fw_size，确定飞控固件size允许的最大值 */
+	/* 2. 初始化USB端口GPIOA9（VBUS） */
+	/* 3. 初始化串口USART2 */
+	/* 4. 初始化LED并点亮（B/E，LED701） */
+	/* 5. 使能能耗控制器时钟 */
+
 	board_init();
 
 	/* configure the clock for bootloader activity */
+	
+	/* 调用clock_init函数，此函数在main_f4.c中被定义，功能如下： */
+	/* 1. PLL时钟设置，并选择main PLL作为系统时钟sysclk，fsysclk=fPLL=168MHz，fUSBSDRNG=48MHz */
+	/* 2. AHB、APB1、APB2时钟设置，fAHB=fsysclk=168MHz，fAPB1=42MHz，fAPB2=84MHz */
+	/* 3. 选择高能耗模式（Scale 2 mode） */
+	/* 4. flash访问控制设置，启动Icache和Dcache，并设置等待时间5周期 */
+	/* 5. 更新库libopencm3中AHB，APB1，APB2对应的全局变量 */
 	clock_init();
 
 	/*
 	 * Check the force-bootloader register; if we find the signature there, don't
 	 * try booting.
 	 */
+	 	/* 检查寄存器BOOT_RTC_REG中的值是否与宏BOOT_RTC_SIGNATURE相同，若相同则停留在bootloader中，若不相同则可以跳转至飞控固件 */
+	/* BOOT_RTC_REG：RTC_BKPxR的第一个32位寄存器，重启不改变存储值，定义在main_f4.c */
+	/* BOOT_RTC_SIGNATURE：值0xb007b007，被定义在main_f4.c中 */
+	/* board_get_rtc_signature：被定义在main_f4.c中，用于获取寄存器BOOT_RTC_REG的存储值 */
+	/* board_set_rtc_signature：被定义在main_f4.c中，设置寄存器BOOT_RTC_REG的值 */
 	if (board_get_rtc_signature() == BOOT_RTC_SIGNATURE) {
 
 		/*
@@ -793,7 +827,7 @@ main(void)
 		board_set_rtc_signature(0);
 	}
 
-#ifdef BOOT_DELAY_ADDRESS
+#ifdef BOOT_DELAY_ADDRESS/* 宏BOOT_DELAY_ADDRESS在hw_config.h中有定义，下列代码有效 *
 	{
 		/*
 		  if a boot delay signature is present then delay the boot
@@ -802,9 +836,20 @@ main(void)
 		  new firmware, while still booting fast by sending a BOOT
 		  command
 		 */
+		 
+		/* 这里给定一个机会，通过飞控固件自身的设置可以影响bootloader的行为。 */
+		/* 设置地址在0x080041a0和0x080041a4的flash值满足一系列逻辑要求，可以防止bootloader自动跳转到飞控固件，给调试工作带来方便。 */
+		/* BOOT_DELAY_ADDRESS：值0x000001a0，定义在hw_config.h */
+		/* flash_func_read_word：定义在main_f4.c，用于读取飞控固件内某地址 */
+		/* 这里，sig1为flash中地址在0x080041a0的32位值，sig2为flash中地址在0x080041a4的32位地址值，在飞控固件地址范围内 */
 		uint32_t sig1 = flash_func_read_word(BOOT_DELAY_ADDRESS);
 		uint32_t sig2 = flash_func_read_word(BOOT_DELAY_ADDRESS + 4);
+		//sig1的后两位可由飞控固件设置
 
+		/* BOOT_DELAY_SIGNATURE1：值0x92c2ecff，定义在bl.h */
+		/* BOOT_DELAY_SIGNATURE2：值0xc5057d5d，定义在bl.h */
+		/* BOOT_DELAY_MAX：值30，定义在bl.h */
+		/* 在满足一系列逻辑下，设定try_boot为假，且重新设置timeout，保证跳转到飞控固件前等待timeout时间 */
 		if (sig2 == BOOT_DELAY_SIGNATURE2 &&
 		    (sig1 & 0xFFFFFF00) == (BOOT_DELAY_SIGNATURE1 & 0xFFFFFF00)) {
 			unsigned boot_delay = sig1 & 0xFF;
@@ -824,10 +869,16 @@ main(void)
 	 * Check if the force-bootloader pins are strapped; if strapped,
 	 * don't try booting.
 	 */
+	 /* board_test_force_pin：定义在main_f4.c，若bootloader引脚为真，
+	 * 则设置try_boot为假，程序不立即跳转至飞控固件，需等待timeout时间 
+	*  由于函数中条件编译的3个宏（BOARD_FORCE_BL_PIN_OUT、BOARD_FORCE_BL_PIN_IN
+	*  和BOARD_FORCE_BL_PIN）均未被定义，此函数返回恒为假 */
 	if (board_test_force_pin()) {
 		try_boot = false;
 	}
 
+	/* 检查USB是否连接，若连接则必须等待timeout再跳转到飞控固件，
+	*否则立即跳转。这样的设置为飞控固件烧写以及调试带来极大方便。 */
 #if INTERFACE_USB
 
 	/*
@@ -839,6 +890,10 @@ main(void)
 	 */
 #if defined(BOARD_PORT_VBUS)
 
+	/* GPIOA：地址为0x40020000的寄存器（libopencm3/include/libopencm3/stm32/common/gpio_common_f234.h） */
+	/* GPIO9：值1<<9（libopencm3/include/libopencm3/stm32/common/gpio_common_all.h） */
+	/* gpio_get：获取某GPIO组的值，定义在libopencm3/lib/stm32/common/gpio_common_all.c */
+	/* 根据原理图，GPIOA9对应VBUS/3.1A，高电平表示USB已连接，低电平表示USB未接 *
 	if (gpio_get(BOARD_PORT_VBUS, BOARD_PIN_VBUS) != 0) {
 		usb_connected = true;
 		/* don't try booting before we set up the bootloader */
@@ -850,6 +905,9 @@ main(void)
 
 #endif
 #endif
+
+	/* 检测串口是否收到break信号（字节0），若收到置try_boot为假，
+	*需等待timeout时间再跳转到飞控固件 */
 
 #if INTERFACE_USART
 
@@ -867,35 +925,58 @@ main(void)
 
 #endif
 
+	/* 若运行到此处try_boot依然为真，则立即跳转到飞控固件
+	*（实际上jump_to_app函数代码依然不短，这里可以近似这样认为）； 
+	*  若跳转未成功，则设置RTC备份寄存器BOOT_RTC_REG为预定值，
+	*  确保下次重启若不更新飞控固件依然无法跳转。 */
+
+
 	/* Try to boot the app if we think we should just go straight there */
 	if (try_boot) {
 
 		/* set the boot-to-bootloader flag so that if boot fails on reset we will stop here */
 #ifdef BOARD_BOOT_FAIL_DETECT
+		/* 宏BOARD_BOOT_FAIL_DETECT未定义，以下代码无效 */
 		board_set_rtc_signature(BOOT_RTC_SIGNATURE);
 #endif
 
 		/* try to boot immediately */
-		jump_to_app();
+		jump_to_app();/* jump_to_app：定义在bl.c，跳转到飞控固件 */
 
-		// If it failed to boot, reset the boot signature and stay in bootloader
+		// If it failed to boot, reset the boot signature and stay in bootloader/* BOOT_RTC_SIGNATURE： */
+		/* board_set_rtc_signature： */
+		/* 设置RTC备份寄存器BOOT_RTC_REG值为BOOT_RTC_SIGNATURE，
+		*  下次重启检测到后若不更新飞控固件则不跳转，程序一直运行在bootloader中。 */
 		board_set_rtc_signature(BOOT_RTC_SIGNATURE);
 
 		/* booting failed, stay in the bootloader forever */
+		/* 置timeout为0，程序一直在bootloader中 */
 		timeout = 0;
 	}
 
 
 	/* start the interface */
-#if INTERFACE_USART
+	/* 现在bootloader首次启动飞控固件失败，初始化上位机通信接口（USB和USART2） */
+#if INTERFACE_USART/* 宏INTERFACE_USART定义在hw_config.h，下列代码有效 */
+	/* BOARD_INTERFACE_CONFIG_USART：值USART2（值0x40004400，指向USART2寄存器首地址）。 */
+	/* BOARD_INTERFACE_CONFIG_USART在main_f4.c中被定义为BOARD_USART，BOARD_USART在hw_config.h中被定义为USART2。*/
+	/* USART2被定义为USART2_BASE，值0x40004400，指向USART2寄存器首地址（libopencm3/include/libopencm3/stm32/common/usart_common_all.h）。 */
+	/* USART：值1，枚举型，定义在bl.h */
+	/* cinit：定义在bl.c，用于初始化通信端口 */
+	/* 初始化串口USART2为与上位机的通信接口 */
+
 	cinit(BOARD_INTERFACE_CONFIG_USART, USART);
 #endif
-#if INTERFACE_USB
+#if INTERFACE_USB/* 宏INTERFACE_USB定义在hw_config.h，下列代码有效 */
+	/* BOARD_INTERFACE_CONFIG_USB：值NULL，定义在main_f4.c */
+	/* USB：值2，枚举型，定义在bl.h */
+	/* cinit：定义在bl.c，用于初始化通信端口 */
+	/* 初始化USB为虚拟串口作为与上位机的通信接口 */
 	cinit(BOARD_INTERFACE_CONFIG_USB, USB);
 #endif
 
 
-#if 0
+#if 0/* 下列代码无效 */
 	// MCO1/02
 	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO8);
 	gpio_set_output_options(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_100MHZ, GPIO8);
@@ -907,15 +988,22 @@ main(void)
 
 	while (1) {
 		/* run the bootloader, come back after an app is uploaded or we time out */
+		/* bootloader：bootloader与上位机的命令处理函数，
+		*烧写新的固件或者timeout（不为0）时间到返回，定义在bl.c中 */
 		bootloader(timeout);
 
 		/* if the force-bootloader pins are strapped, just loop back */
+		/* board_test_force_pin：定义在main_f4.c，若bootloader引脚为真，则继续循环 
+		*  由于函数中条件编译的3个宏（BOARD_FORCE_BL_PIN_OUT、BOARD_FORCE_BL_PIN_IN和
+		*  BOARD_FORCE_BL_PIN）均未被定义，此函数返回恒为假 */
 		if (board_test_force_pin()) {
 			continue;
 		}
 
-#if INTERFACE_USART
-
+#if INTERFACE_USART/* 宏INTERFACE_USART定义在hw_config.h，下列代码有效 */
+		/* board_test_usart_receiving_break：连续接收3个字节的内容，
+		*  如果收到一个0字节则返回真，否则返回假。定义在main_f4.c 
+		*  若串口USART2收到break信号（0字节），继续循环 */
 		/* if the USART port RX line is still receiving a break, just loop back */
 		if (board_test_usart_receiving_break()) {
 			continue;
@@ -924,12 +1012,12 @@ main(void)
 #endif
 
 		/* set the boot-to-bootloader flag so that if boot fails on reset we will stop here */
-#ifdef BOARD_BOOT_FAIL_DETECT
+#ifdef BOARD_BOOT_FAIL_DETECT/* 宏BOARD_BOOT_FAIL_DETECT未定义，下列代码无效 */
 		board_set_rtc_signature(BOOT_RTC_SIGNATURE);
 #endif
 
 		/* look to see if we can boot the app */
-		jump_to_app();
+		jump_to_app();/* jump_to_app：跳转至飞控固件 */
 
 		/* launching the app failed - stay in the bootloader forever */
 		timeout = 0;

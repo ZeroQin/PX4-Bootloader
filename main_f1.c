@@ -29,12 +29,11 @@
 
 /* board definition */
 struct boardinfo board_info = {
-	.board_type	= BOARD_TYPE, //5,9,11,13....
+	.board_type	= BOARD_TYPE, //BOARD_TYPE板载处理器编号在hw_config.h中定义，v2 IO协处理器为10。 */..
 	.board_rev	= 0,
-	.fw_size	= APP_SIZE_MAX,//0xf000 for V1 or V2,0x3f000 for V3  //(BOARD_FLASH_SIZE - (BOOTLOADER_RESERVATION_SIZE + APP_RESERVATION_SIZE))
+	.fw_size	= APP_SIZE_MAX,//固件大小的最大值，在hw_config.h中被定义为0xf000，60KB
 
-	.systick_mhz	= OSC_FREQ, //FMU(24 for V1-V4,V4pro; 16 V5,V5x;8 V2;)  24 FLOW_V1;8 DISCOVERY_V1;PIO(24...)....
-};
+	.systick_mhz	= OSC_FREQ, //系统时钟输入等于OSC_FREQ，在hw_config.h中被定义为24MHz
 
 static void board_init(void);
 
@@ -306,25 +305,41 @@ int
 main(void)
 {
 	unsigned timeout = 0;
+	/* bootloader初始化完毕后跳转到飞控固件入口地址时，所需等待的时间，以ms计算。 */
 
 	/* do board-specific initialisation */
+	
+	/* 调用board_init函数，此函数在main_f1.c中被定义，功能如下 */
+	/* 1. 初始化LED控制并点亮LED灯 */
+	/* 2. 设置强制Bootloader引脚GPIOB5为浮动输入模式，方便采集安全开关的状态 */
+	/* 3. 使能能源接口时钟和备份接口时钟，准备RTC备份寄存器 */
+	/* 4. 设置USART2-TX引脚GPIOA2，对应原理图SERIAL_IO_TO_FMU，用于IO协处理器发送信息到主控FMU */
 	board_init();
 
-#if defined(INTERFACE_USART) || defined (INTERFACE_USB)
+#if defined(INTERFACE_USART) || defined (INTERFACE_USB) /*宏INTERFACE_USART和INTERFACE_USB分别被定义为1和0，代码有效，hw_config.h */
 	/* XXX sniff for a USART connection to decide whether to wait in the bootloader? */
-	timeout = BOOTLOADER_DELAY;
+	timeout = BOOTLOADER_DELAY;/* BOOTLOADER_DELAY：值200，表示200ms，hw_config.h */
 #endif
 
-#ifdef INTERFACE_I2C
+#ifdef INTERFACE_I2C/* 宏INTERFACE_I2C未定义，代码无效 */
 # error I2C bootloader detection logic not implemented
 #endif
 
 	/* if the app left a cookie saying we should wait, then wait */
+	/* 若RTC备份寄存器BKP_DR1中存储了预定值，则timeout赋值为200ms */
+	/* should_wait：判定RTC备份寄存器BKP_DR1中是否存储了预定值。若存储了返回真，未存储则返回假 */
+	/* BOOTLOADER_DELAY：值200，表示200ms，hw_config.h */
+
 	if (should_wait()) {
 		timeout = BOOTLOADER_DELAY;
 	}
 
-#ifdef BOARD_FORCE_BL_PIN
+#ifdef BOARD_FORCE_BL_PIN/* 宏BOARD_FORCE_BL_PIN定义为GPIO5，代码有效，hw_config.h */
+	/* 若GPIO5为高电平，则timeout赋值为0xffffffff，永久停留在bootloader中 */
+	/* BOARD_FORCE_BL_VALUE：被定义为GPIO5（1<<5），hw_config.h */
+	/* BOARD_FORCE_BL_PORT：被定义为GPIOB（GPIOB的收寄存器），hw_config.h */
+	/* BOARD_FORCE_BL_PIN：被定义为GPIO5（1<<5），hw_config.h */
+	/* gpio_get：获取某GPIO组的值，定义在libopencm3/lib/stm32/common/gpio_common_all.c */
 
 	/* if the force-BL pin state matches the state of the pin, wait in the bootloader forever */
 	if (BOARD_FORCE_BL_VALUE == gpio_get(BOARD_FORCE_BL_PORT, BOARD_FORCE_BL_PIN)) {
@@ -337,6 +352,9 @@ main(void)
 
 
 	/* if we aren't expected to wait in the bootloader, try to boot immediately */
+	/* 若timeout为0，则调用jump_to_app立即启动飞控固件。 */
+	/* 若jump_to_app函数返回，则timeout赋值为0 */
+
 	if (timeout == 0) {
 		/* try to boot immediately */
 		jump_to_app();
@@ -346,13 +364,20 @@ main(void)
 	}
 
 	/* configure the clock for bootloader activity */
+	/* 初始化系统时钟为PLL（使用HSI） */
+	/* clock_init：使用HSI将MCU的系统时钟为PLL，频率24MHz，定义在main_f1.c */
 	clock_init();
 
 	/* start the interface */
+	/* 函数初始化串口USART2 */
+	/* BOARD_INTERFACE_CONFIG：定义为BOARD_USART（USART2），main_f1.c */
+	/* USART：值1，枚举型，定义在bl.h中 */
 	cinit(BOARD_INTERFACE_CONFIG, USART);
 
 	while (1) {
 		/* run the bootloader, possibly coming back after the timeout */
+		/* bootloader：bootloader与上位机的命令处理函数，
+		*烧写新的固件或者timeout（不为0）时间到返回，定义在bl.c中 */
 		bootloader(timeout);
 
 		/* look to see if we can boot the app */

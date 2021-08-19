@@ -2,15 +2,15 @@
 # PX4 bootloader build rules for STM32F1 targets.
 #
 ARCH=stm32
-OPENOCD		?= ../../sat/bin/openocd
+OPENOCD		?= ../../sat/bin/openocd#定义openocd命令变量
 
-JTAGCONFIG ?= interface/olimex-jtag-tiny.cfg
+JTAGCONFIG ?= interface/olimex-jtag-tiny.cfg#定义Jtag烧写器配置文件
 #JTAGCONFIG ?= interface/jtagkey-tiny.cfg
 
 # 3 seconds / 3000 ms default delay
-PX4_BOOTLOADER_DELAY	?= 3000
+PX4_BOOTLOADER_DELAY	?= 3000#定义bootloader延时3000ms
 
-SRCS	    = $(COMMON_SRCS) $(addprefix $(ARCH)/,$(ARCH_SRCS)) main_f1.c
+SRCS	    = $(COMMON_SRCS) $(addprefix $(ARCH)/,$(ARCH_SRCS)) main_f1.c	#定义源文件为bl.c cdcacm.c usart.c和main_f1.c
 
 FLAGS		+= -mthumb -mcpu=cortex-m3\
        -DTARGET_HW_$(TARGET_HW) \

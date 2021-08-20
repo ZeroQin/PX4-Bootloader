@@ -34,7 +34,7 @@ struct boardinfo board_info = {
 	.fw_size	= APP_SIZE_MAX,//固件大小的最大值，在hw_config.h中被定义为0xf000，60KB
 
 	.systick_mhz	= OSC_FREQ, //系统时钟输入等于OSC_FREQ，在hw_config.h中被定义为24MHz
-
+};
 static void board_init(void);
 
 uint32_t

@@ -718,20 +718,38 @@ crc32(const uint8_t *src, unsigned len, unsigned state)
 void
 bootloader(unsigned timeout)
 {
+	/* bl_type：全局接口类型变量。NONE：值0，枚举类，定义在bl.h */
+	/* 若使bootloader实际上能够起作用，必须设置bl_type的类型，不能按照默认值NONE */
 	bl_type = NONE; // The type of the bootloader, whether loading from USB or USART, will be determined by on what port the bootloader recevies its first valid command.
 	volatile uint32_t  bl_state = 0; // Must see correct command sequence to erase and reboot (commit first word)
 	uint32_t	address = board_info.fw_size;	/* force erase before upload will work */
 	uint32_t	first_word = 0xffffffff;
 
 	/* (re)start the timer system */
+	
+	/* 1.（重新）启动systick定时器和中断，周期为1ms */
+	/* STK_CSR_CLKSOURCE_AHB：值1<<2，选取AHB作为systick的时钟源，libopencm3/include/libopencm3/cm3/systick.h */
+	/* board_info.systick_mhz：值168（主控FMU，main_f4.c），24（IO协处理器，main_f1.c） */
+	/* systick_set_clocksource：选取systick的时钟源，libopencm3/lib/cm3/systick.c */
+	/* systick_set_reload：设置systick时钟倒计时（寄存器STK_VAL），libopencm3/lib/cm3/systick.c */
+	/* systick_interrupt_enable：开启systick中断，libopencm3/lib/cm3/systick.c */
+	/* systick_counter_enable：systick倒计时开启，libopencm3/lib/cm3/systick.c */
 	arch_systic_init();
 
 	/* if we are working with a timeout, start it running */
+	/* 2. 若timeout不为0，启动0号时钟（TIMER_BL_WAIT），周期为timeout，单位ms */
+	/* timeout为0则不启动时钟，永远停留在本函数中 */
+	/* TIMER_BL_WAIT：值0，定义在bl.h */
+	/* timer：unsigned型全局数组，成员有4个，定义在bl.c */
 	if (timeout) {
 		timer[TIMER_BL_WAIT] = timeout;//timeout 仅仅在这儿初始化了 TIMER_BL_WAIT ；第一次以后的while 里都为0
 	}
 
 	/* make the LED blink while we are idle */
+	/* 3. 设置闪烁B/E LED灯（主控FMU为LED701，IO协处理器为LED703） */
+	/* B/E LED灯闪烁表示程序处于闲置状态，通过systick时钟的中断处理函数来实现 */
+	/* LED_BLINK：值0，led_state枚举成员，定义在bl.c */
+	/* led_set：LED灯状态设置函数，定义在bl.c */
 	led_set(LED_BLINK);
 
 	while (true) {
@@ -743,19 +761,31 @@ bootloader(unsigned timeout)
 		} flash_buffer;
 
 		// Wait for a command byte
+		
+		/* 4.1 关闭ACT LED灯（主控FMU没有，IO协处理器为LED705） */
+		/* LED_ACTIVITY：值1，led_state枚举成员，定义在bl.c */
 		led_off(LED_ACTIVITY);
-
+		/* 4.2 死循环读取串口数据（1字节），只有读到数据方可跳出循环 */
 		do {
 			/* if we have a timeout and the timer has expired, return now */
+			
+			/* 若timeout非零，0号时钟（TIMER_BL_WAIT）倒计时至0，则timeout时间到返回。 */
+			/* TIMER_BL_WAIT：值0，定义在bl.h */
+			/* timeout：bootloader跳转到飞控固件所需等待的时间，bootloader函数输入 */
+			/* timer：通用计时器数组变量，定义在bl.c */
 			if (timeout && !timer[TIMER_BL_WAIT]) {//第一次等待到时间耗尽都没有读到一个 byte 就跳出 主while
 				return;
 			}
 
 			/* try to get a byte from the host */
+			/* 不等待，立即读取串口一个数据（cin_wait输入为0） */
+			/* cin_wait：在给定的输入时间timeout内读到串口数据，则返回数据；若超时返回-1，定义在bl.c */
 			c = cin_wait(0);
 
 		} while (c < 0);
-
+		/* 4.3 读到串口数据（命令），开启ACT LED灯 */
+		/* LED_ACTIVITY：值1，led_state枚举成员，定义在bl.c */
+		/* led_off：开启LED灯，定义在main_f?.c */
 		led_on(LED_ACTIVITY);
 
 		// handle the command byte
@@ -766,6 +796,16 @@ bootloader(unsigned timeout)
 		// command:		GET_SYNC/EOC
 		// reply:		INSYNC/OK
 		//
+		
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* (1) 同步命令PROTO_GET_SYNC（0x21），命令结构PROTO_GET_SYNC+PROTO_EOC */
+		/*	 * 收到PROTO_GET_SYNC的2ms内未接收到命令终止字，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*	 * 运行成功，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* 接收到同步命令PROTO_GET_SYNC的2ms内位需收到终止字PROTO_EOC（0x20），否则进行错误指令处理 */
+		/* PROTO_GET_SYNC：值0x21，同步命令字，定义在bl.c */
+		/* PROTO_EOC：值0x20，命令终止字，定义在bl.c */
+		/* cmd_bad：错误命令处理函数的标号，在bootloader函数末尾 */
 		case PROTO_GET_SYNC:
 
 			/* expect EOC */
@@ -786,6 +826,17 @@ bootloader(unsigned timeout)
 		// VEC_AREA reply	<vectors 7-10:16>/INSYNC/EOC
 		// bad arg reply:	INSYNC/INVALID
 		//
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （2）获取设备ID命令PROTO_GET_DEVICE（0x22），它后面通常还会跟随一个参数（用于指示具体获取设备的哪个内容），命令结构：PROTO_GET_DEVICE+arg(1byte)+PROTO_EOC */
+		/*   * 若为无效参数或参数后2ms内未接收到命令终止字，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*   * 若为PROTO_DEVICE_BL_REV（值1），则返回bootloader协议版本号BL_PROTOCOL_VERSION（值5），回告结构：rev(4byte)+(PROTO_INSYNC+PROTO_OK) */
+		/*   * 若为PROTO_DEVICE_BOARD_ID（值2），则返回板载处理器编号board_info.board_type（BOARD_TYPE，主控FMU值9，IO协处理器值10），回告结构：board_type(4byte)+(PROTO_INSYNC+PROTO_OK) */
+		/*   * 若为PROTO_DEVICE_BOARD_REV（值3），则返回修订版本board_info.board_rev（值0），回告结构：board_rev(4byte)+(PROTO_INSYNC+PROTO_OK) */
+		/*   * 若为PROTO_DEVICE_FW_SIZE（值4），则返回飞控固件的最大值（单位KB）board_info.fw_size（主控值2000，IO协处理器APP_SIZE_MAX=0xf000），回告结构：fw_size(4byte)+(PROTO_INSYNC+PROTO_OK) */
+		/*   * 若为PROTO_DEVICE_VEC_AREA（值5），则返回飞控固件向量表7-10项的函数地址（debug_monitor、sv_call、pend_sv、systick），回告结构：vectors(4*4byte)+(PROTO_INSYNC+PROTO_OK) */
+		/*   * 若为其他参数，则进行非法指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*   * 运行成功，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_GET_DEVICE:
 			/* expect arg then EOC */
 			arg = cin_wait(1000);
@@ -797,7 +848,16 @@ bootloader(unsigned timeout)
 			if (!wait_for_eoc(2)) {
 				goto cmd_bad;
 			}
-
+			/* 判定命令PROTO_GET_DEVICE的参数 */
+			/* PROTO_DEVICE_BL_REV：值1，命令PROTO_GET_DEVICE的参数，表示获取Bootloader协议版本，定义在bl.c */
+			/* PROTO_DEVICE_BOARD_ID：值2，命令PROTO_GET_DEVICE的参数，表示获取板载处理器编号（对应board_info.board_type=BOARD_TYPE），定义在bl.c */
+			/* PROTO_DEVICE_BOARD_REV：值3，命令PROTO_GET_DEVICE的参数，表示获取修订版本（对应board_info.board_rev=0），定义在bl.c */
+			/* PROTO_DEVICE_FW_SIZE：值4，命令PROTO_GET_DEVICE的参数，表示飞控固件的最大值（对应board_info.fw_size），定义在bl.c */
+			/* PROTO_DEVICE_VEC_AREA：值5，命令PROTO_GET_DEVICE的参数，表示获取飞控固件向量表7-10项的函数地址（debug_monitor、sv_call、pend_sv、systick），定义在bl.c */
+			/* bl_proto_rev：全局变量，存储Bootloader的版本号（BL_PROTOCOL_VERSION值5），是获取设备ID命令参数PROTO_DEVICE_BL_REV的回告值，定义在bl.c */
+			/* cout：串口（包括USB虚拟串口）输出特定内容的函数，定义在bl.c */
+			/* flash_func_read_word：读取flash特定地址1个字的函数，定义在main_f?.c */
+			/* cmd_bad：错误命令处理函数的标号，在bootloader函数末尾 */
 			switch (arg) {
 			case PROTO_DEVICE_BL_REV:
 				cout((uint8_t *)&bl_proto_rev, sizeof(bl_proto_rev));
@@ -837,6 +897,17 @@ bootloader(unsigned timeout)
 		// success reply:	INSYNC/OK
 		// erase failure:	INSYNC/FAILURE
 		//
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ 
+		* （3）擦除flash与准备烧写飞控固件指令PROTO_CHIP_ERASE（0x23），命令结构：PROTO_CHIP_ERASE+PROTO_EOC 
+		*   * 收到PROTO_CHIP_ERASE的2ms内未收到命令终止字，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) 
+		*   * 若为主控FMU芯片（F4），调用check_silicon函数判断MCU版本是否正确（是否为revision 3） 
+		*       * 若主控FMU版本不正确（revision 3以下），跳转进行bad_silicon处理，回告结构：(PROTO_INSYNC+PROTO_BAD_SILICON_REV) 
+		*   * 点亮B/E灯，指示正在擦除flash，逐段、页（sector）擦除flash 
+		*   * 关闭B/E灯，指示擦除flash已完成，取每KB的首字检查flash擦除操作是否成功 
+		*       * 若flash擦除操作失败，进行指令运行失败处理，回告结构：(PROTO_INSYNC+PROTO_FAILED) 
+		*   * 重置flash编写逻辑地址变量address为0，恢复B/E灯闪烁 
+		*   * 运行成功，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) 
+		* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_CHIP_ERASE:
 
 			/* expect EOC */
@@ -844,7 +915,10 @@ bootloader(unsigned timeout)
 				goto cmd_bad;
 			}
 
-#if defined(TARGET_HW_PX4_FMU_V4) || defined(TARGET_HW_UVIFY_CORE)
+#if defined(TARGET_HW_PX4_FMU_V4) || defined(TARGET_HW_UVIFY_CORE)/* 对主控FMU，宏TARGET_HW_PX4_FMU_V4定义为1，代码有效，Makefile.F4 */
+										/* 对UI协处理器，宏TARGET_HW_PX4_FMU_V4未定义，代码无效 */
+			/* check_silicon：函数自动辨识MCU的版本，默认STM32F427的revision 3返回0，其余返回-1 */
+			/* bad_silicon：MCU版本错误处理函数的标号，在bootloader函数末尾 */
 
 			if (check_silicon()) { //f1 alwayes return 0
 				goto bad_silicon;
@@ -858,19 +932,34 @@ bootloader(unsigned timeout)
 
 			// clear the bootloader LED while erasing - it stops blinking at random
 			// and that's confusing
+			/* 点亮B/E灯 */
+			/* LED_ON： 值1，led_state枚举成员，定义在bl.c*/
+			/* led_set：LED灯状态设置函数，定义在bl.c */
 			led_set(LED_ON);//LED_BOOTLOADER ON
 
 			// erase all sectors
+			/* flash_unlock：解锁flash的库函数，定义在libopencm3/lib/stm32/common/flash_common_f234.c（主控FMU），
+			*  libopencm3/lib/stm32/common/flash_common_f01.c（IO协处理器） */
 			arch_flash_unlock();//清楚 unlock 标志；授权 FPEC 访问
-			//遍历擦除所有扇区
+			/* 逐段擦除flash */
+			/* flash_func_sector_size：返回MCU的flash在某sector的大小值，若无此sector则返回0，定义在main_f?.c */
+			/* flash_func_erase_sector： */
 			for (int i = 0; flash_func_sector_size(i) != 0; i++) {
 				flash_func_erase_sector(i);
 			}
-
+			
+			
+			/* 关闭B/E灯 */
+			/* LED_OFF： 值2，led_state枚举成员，定义在bl.c*/
+			/* led_set：LED灯状态设置函数，定义在bl.c */
 			// disable the LED while verifying the erase
 			led_set(LED_OFF);
 
 			// verify the erase 
+			/* 取每KB的首字检查flash擦除操作是否正确，即是否有擦除成功 */
+			/* board_info.fw_size：飞控固件的最大值（单位KB） */
+			/* flash_func_read_word：读取某flash地址的数据，定义在main_f?.c */
+			/* cmd_fail：指令运行错误处理的标号，在bootloader函数末尾 */
 			for (address = 0; address < board_info.fw_size; address += 4)
 				if (flash_func_read_word(address) != 0xffffffff) {
 					goto cmd_fail;
@@ -880,6 +969,9 @@ bootloader(unsigned timeout)
 			SET_BL_STATE(STATE_PROTO_CHIP_ERASE); //bl_state |= 0x4
 
 			// resume blinking
+			/* B/E灯闪烁 */
+			/* LED_BLINK： 值0，led_state枚举成员，定义在bl.c*/
+			/* led_set：LED灯状态设置函数，定义在bl.c */
 			led_set(LED_BLINK);
 			break;
 
@@ -890,6 +982,20 @@ bootloader(unsigned timeout)
 		// invalid reply:	INSYNC/INVALID
 		// readback failure:	INSYNC/FAILURE
 		//
+		
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+				/* （4）flash烧写命令PROTO_PROG_MULTI（0x27），命令结构：PROTO_PROG_MULTI+arg(1byte)+c(len bytes)+PROTO_EOC */
+				/*	 * 收到PROTO_PROG_MULTI的50ms内未收到第一个参数（长度arg），按照错误命令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+				/*	 * 若收到的第一个参数（长度arg）不是4字节对齐，按照错误命令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+				/*	 * 若当前编写地址（address）+第一个参数（长度arg）超出飞控固件最大范围board_info.fw_size，按照错误命令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+				/*	 * 若收到的第一个参数（长度arg）超出缓冲区长度，按照错误命令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+				/*	 * 根据长度arg逐字节接收数据，并存放在缓冲区flash_buffer中；若其中任何1个字节超时1s，按照错误命令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+				/*	 * 接收完有效数据后，若200ms内未接收到命令终止字（PROTO_EOC），按照错误命令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+				/*	 * 若当前编写地址address为0，则将烧写缓冲区flash_buffer首个32位保存在变量first_word中，并将缓冲区首改为0xFFFFFFFF */
+				/*		 * 对于主控FMU，若MCU版本检查失败，按照MCU版本错误处理，回告结构：(PROTO_INSYNC+PROTO_BAD_SILICON_REV) */
+				/*	 * 逐字烧写flash地址，若写入与读出不一致，进行命令失败处理，回告结构：（PROTO_INSYNC+PROTO_FAILED） */
+				/*	 * 运行成功，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+				/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_PROG_MULTI:		// program bytes
 			// expect count
 			arg = cin_wait(50);

@@ -827,7 +827,7 @@ main(void)
 		board_set_rtc_signature(0);
 	}
 
-#ifdef BOOT_DELAY_ADDRESS/* 宏BOOT_DELAY_ADDRESS在hw_config.h中有定义，下列代码有效 *
+#ifdef BOOT_DELAY_ADDRESS/* 宏BOOT_DELAY_ADDRESS在hw_config.h中有定义，下列代码有效 */
 	{
 		/*
 		  if a boot delay signature is present then delay the boot
@@ -893,7 +893,7 @@ main(void)
 	/* GPIOA：地址为0x40020000的寄存器（libopencm3/include/libopencm3/stm32/common/gpio_common_f234.h） */
 	/* GPIO9：值1<<9（libopencm3/include/libopencm3/stm32/common/gpio_common_all.h） */
 	/* gpio_get：获取某GPIO组的值，定义在libopencm3/lib/stm32/common/gpio_common_all.c */
-	/* 根据原理图，GPIOA9对应VBUS/3.1A，高电平表示USB已连接，低电平表示USB未接 *
+	/* 根据原理图，GPIOA9对应VBUS/3.1A，高电平表示USB已连接，低电平表示USB未接 */
 	if (gpio_get(BOARD_PORT_VBUS, BOARD_PIN_VBUS) != 0) {
 		usb_connected = true;
 		/* don't try booting before we set up the bootloader */

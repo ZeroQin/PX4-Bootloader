@@ -529,9 +529,14 @@ led_set(enum led_state state)
 	}
 }
 
+
+/* 发送同步命令函数，是bootloader函数中命令运行成功后调用的函数 */
 static void
 sync_response(void)
 {
+	/* PROTO_INSYNC：值0x12，同步指令字，定义在bl.c */
+	/* PROTO_OK：值0x10，指令运行成功回告字，定义在bl.c */
+	/* cout：串口或模拟串口输出特定内容的函数，定义在bl.c */
 	uint8_t data[] = {
 		PROTO_INSYNC,	// "in sync"
 		PROTO_OK	// "OK"
@@ -540,10 +545,16 @@ sync_response(void)
 	cout(data, sizeof(data));
 }
 
-#if defined(TARGET_HW_PX4_FMU_V4) || defined(TARGET_HW_UVIFY_CORE)
-static void
+/* 当MCU型号错误处理函数，串口或USB模拟串口输出非法响应（PROTO_INSYNC+PROTO_BAD_SILICON_REV），
+*  是bootloader函数中bad_silicon标号对应的函数 */
+
+#if defined(TARGET_HW_PX4_FMU_V4) || defined(TARGET_HW_UVIFY_CORE)/* 对主控FMU，TARGET_HW_PX4_FMU_V4定义为1，代码有效，Makefile.f4 */
+static void														/* 对IO协处理器，TARGET_HW_PX4_FMU_V4未定义，代码无效 */
 bad_silicon_response(void)
 {
+	/* PROTO_INSYNC：值0x12，同步指令字，定义在bl.c */
+	/* PROTO_BAD_SILICON_REV：值0x14，主控MCU型号错误命令字，定义在bl.c */
+	/* cout：串口或模拟串口输出特定内容的函数，定义在bl.c */
 	uint8_t data[] = {
 		PROTO_INSYNC,			// "in sync"
 		PROTO_BAD_SILICON_REV	// "issue with < Rev 3 silicon"
@@ -553,9 +564,16 @@ bad_silicon_response(void)
 }
 #endif
 
+
+/* 当指令非法时的处理函数，串口或USB模拟串口输出非法响应（PROTO_INSYNC+PROTO_INVALID），
+*  是bootloader函数中cmd_bad标号对应的函数 */
+
 static void
 invalid_response(void)
 {
+	/* PROTO_INSYNC：值0x12，同步指令字，定义在bl.c */
+	/* PROTO_INVALID：值0x13，非法指令字，定义在bl.c */
+	/* cout：串口或模拟串口输出特定内容的函数，定义在bl.c */
 	uint8_t data[] = {
 		PROTO_INSYNC,	// "in sync"
 		PROTO_INVALID	// "invalid command"
@@ -565,9 +583,14 @@ invalid_response(void)
 	cout(data, sizeof(data));
 }
 
+/* 当指令运行失败时的处理函数，串口或USB模拟串口输出运行失败响应（PROTO_INSYNC+PROTO_FAILED），
+*  是bootloader函数中cmd_fail标号对应的函数 */
 static void
 failure_response(void)
 {
+	/* PROTO_INSYNC：值0x12，同步指令字，定义在bl.c */
+	/* PROTO_FAILED：值0x11，运行失败指令字，定义在bl.c */
+	/* cout：串口或模拟串口输出特定内容的函数，定义在bl.c */
 	uint8_t data[] = {
 		PROTO_INSYNC,	// "in sync"
 		PROTO_FAILED	// "command failed"
@@ -576,14 +599,24 @@ failure_response(void)
 	cout(data, sizeof(data));
 }
 
+
+/* 在给定的时间timeout内读到串口数据，则返回数据；若超时返回-1 */
 static int
 cin_wait(unsigned timeout)
 {
 	int c = -1;
 
+	
+	/* 设置1号定时器（TIMER_CIN）周期为输入值（此处为0） */
+	/* TIMER_CIN：值1，定义在bl.h */
+	/* timer：通用计时器数组变量，定义在bl.c */
 	/* start the timeout */
 	timer[TIMER_CIN] = timeout;//当 timeout = 0,以下循环会只执行一次
 
+	
+	/* 一直读取串口获得数据。若要返回，或者读取到数据，或者若定时器（TIMER_CIN）到时。 */
+	/* cin_count：串口和USB虚拟串口接收到的数据总量，定义在bl.c */
+	/* cin：获取串口数据函数，定义在bl.c */
 	do {
 		c = cin(board_get_devices());
 
@@ -602,22 +635,31 @@ cin_wait(unsigned timeout)
  * @param timeout length of time in ms to wait for the EOC to be received
  * @return true if the EOC is returned within the timeout perio, else false
  */
+
+/* 在给定的等待时间内，下一条获取到的命令是否为终止字PROTO_EOC；若是返回真，不是返回假 */
 inline static bool
 wait_for_eoc(unsigned timeout)
 {
 	return cin_wait(timeout) == PROTO_EOC;
 }
 
+
+/* 串口或USB模拟串口输出1个字 */
 static void
 cout_word(uint32_t val)
 {
+	/* cout：串口或模拟串口输出特定内容的函数，定义在bl.c */
 	cout((uint8_t *)&val, 4);
 }
 
-#ifndef NO_OTP_SN_CHIP
+
+/* 串口或USB模拟串口读入1个字，具有超时检测功能 */
+#ifndef NO_OTP_SN_CHIP//only for IO1/2
 static int
 cin_word(uint32_t *wp, unsigned timeout)
 {
+	/* 由于USB串口每次只能读入1字节，而结果需要的是1个字，
+	*故定义联合体u长度4字节适用于两种操作 */
 	union {
 		uint32_t w;
 		uint8_t b[4];
@@ -638,6 +680,9 @@ cin_word(uint32_t *wp, unsigned timeout)
 }
 #endif
 
+
+/* 给出数据src的crc32校验结果 */
+
 static uint32_t
 crc32(const uint8_t *src, unsigned len, unsigned state)
 {
@@ -645,6 +690,7 @@ crc32(const uint8_t *src, unsigned len, unsigned state)
 
 	/* check whether we have generated the CRC table yet */
 	/* this is much smaller than a static table */
+	/* 检查是否已生成crc32校验表（按照定义肯定是未生成的），若未生成则立刻生成 */
 	if (crctab[1] == 0) {
 		for (unsigned i = 0; i < 256; i++) {
 			uint32_t c = i;
@@ -661,7 +707,7 @@ crc32(const uint8_t *src, unsigned len, unsigned state)
 			crctab[i] = c;
 		}
 	}
-
+	/* 对于从src开始的len长度字节进行crc32校验 */
 	for (unsigned i = 0; i < len; i++) {
 		state = crctab[(state ^ src[i]) & 0xff] ^ (state >> 8);
 	}

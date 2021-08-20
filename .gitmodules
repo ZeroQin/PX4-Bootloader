@@ -1,3 +1,3 @@
 [submodule "libopencm3"]
 	path = libopencm3
-	url = https://github.com/PX4/libopencm3.git
+	url = https://github.com/ZeroQin/libopencm3.git

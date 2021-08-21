@@ -155,9 +155,13 @@
 static uint8_t bl_type;/* bl_type：接口类型静态全局变量，被bootloader函数定义 */
 static uint8_t last_input;/* last_input：静态全局变量，上次获取串口数据的方式 */
 
+/* cinit 函数是串口和 USB 虚拟串口初始化的主要函数，初始化后 Bootloader 可与上位机的通信接口，
+*  根据输入命令对 Bootloader 进行调试。*/
+
 inline void cinit(void *config, uint8_t interface)
 {
-#if INTERFACE_USB
+#if INTERFACE_USB/* 主控FMU：宏INTERFACE_USB值为1，代码有效，定义在hw_config.h */
+				/* IO协处理器：宏INTERFACE_USB值为0，代码无效，定义在hw_config.h */
 
 	if (interface == USB) {
 		return usb_cinit(config);
@@ -172,6 +176,8 @@ inline void cinit(void *config, uint8_t interface)
 
 #endif
 }
+/* 使 Bootloader 主动放弃通信串口的控制权。cfini 函数根据输入 interface 的值决定具体调用的
+*  初始化函数；uart_cfini 用于反向初始化串口，usb_cfini 用于反向初始化 USB 接口。*/
 inline void cfini(void)
 {
 #if INTERFACE_USB
@@ -184,7 +190,8 @@ inline void cfini(void)
 
 
 /* 获取串口数据函数，可为USART和USB虚拟串口 */
-
+/* USART：值为1，枚举类，定义在bl.h */
+/* USB：值为2，枚举类，定义在bl.h */
 inline int cin(uint32_t devices)
 {
 #if INTERFACE_USB	/* 对主控FMU，宏INTERFACE_USART定义为1，代码有效，hw_config.h */
@@ -280,8 +287,10 @@ inline void cout(uint8_t *buf, unsigned len)
 
 static const uint32_t	bl_proto_rev = BL_PROTOCOL_VERSION;	// 5，表示Bootloader协议版本 value returned by PROTO_DEVICE_BL_REV
 
-static unsigned head, tail;
-static uint8_t rx_buf[256] USB_DATA_ALIGN;
+
+static unsigned head, tail;		/* 头、尾指针 */
+static uint8_t rx_buf[256];		/* 缓冲区长度 */
+
 
 static enum led_state {LED_BLINK, LED_ON, LED_OFF} _led_state;/* _led_state：LED状态枚举型变量 */
 
@@ -998,6 +1007,11 @@ bootloader(unsigned timeout)
 				/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_PROG_MULTI:		// program bytes
 			// expect count
+			/* 50ms内获取第一个参数 */
+			/* cin_wait：在给定的时间内读到串口数据，则返回数据；若超时返回-1，定义在bl.c */
+			/* cmd_bad：错误命令处理函数的标号，在bootloader函数末尾 */
+			/* board_info.fw_size：飞控固件的最大值 */
+			/* flash_buffer：共同体，代表接收缓冲区（256字节或32字） */
 			arg = cin_wait(50);
 
 			if (arg < 0) {
@@ -1016,7 +1030,11 @@ bootloader(unsigned timeout)
 			if ((unsigned int)arg > sizeof(flash_buffer.c)) {//每次传入字节数小于 buffer容量
 				goto cmd_bad;
 			}
-
+			
+			/* 逐字节接收串口数据并存放在缓冲区内，数据延时不超过1s */
+			/* cin_wait：在给定的时间内读到串口数据，则返回数据；若超时返回-1，定义在bl.c */
+			/* cmd_bad：错误命令处理函数的标号，在bootloader函数末尾 */
+			/* flash_buffer：共同体，代表接收缓冲区（256字节或32字） */
 			for (int i = 0; i < arg; i++) {
 				c = cin_wait(1000);
 
@@ -1026,11 +1044,18 @@ bootloader(unsigned timeout)
 
 				flash_buffer.c[i] = c;
 			}
-
+			/* 接收完有效数据后，200ms内必须接收到命令终止字 */
+			/* wait_for_eoc：在给定的时间内，下一条获取到的命令是否为命令终止字PROTO_EOC；若是返回真，不是返回假，定义在bl.c */
+			/* cmd_bad：错误命令处理函数的标号，在bootloader函数末尾 */
 			if (!wait_for_eoc(200)) {
 				goto cmd_bad;
 			}
 
+			/* 若当前编写逻辑地址为0，（对主控FMU，若MCU版本检查失败，跳转到bad_silicon，进行错误MCU版本处理），则将烧写缓冲区flash_buffer首个32位保存在变量first_word中，并将缓冲区首改为0xFFFFFFFF */
+			/* check_silicon：函数自动辨识MCU的版本，默认STM32F427的revision 3返回0，其余返回-1 */
+			/* bad_silicon：MCU版本错误处理函数的标号，在bootloader函数末尾 */
+			/* first_word：首字保存变量，定义在bootloader函数中 */
+			/* flash_buffer：共同体，代表接收缓冲区（256字节或32字） */
 			if (address == 0) {
 
 #if defined(TARGET_HW_PX4_FMU_V4) || defined(TARGET_HW_UVIFY_CORE)
@@ -1047,6 +1072,11 @@ bootloader(unsigned timeout)
 				flash_buffer.w[0] = 0xffffffff;
 			}
 
+			
+			/* 逐字烧写flash地址，若写入与读出不一致，跳转到cmd_fail，进行命令失败处理，返回PROTO_INSYNC+PROTO_FAILED */
+			/* flash_func_write_word：烧写flash某地址起始为特定内容，4位烧写，定义在main_f?.c */
+			/* flash_func_read_word：读取flash某特定地址内容，4位读取，定义在main_f?.c */
+			/* cmd_fail：指令运行错误处理的标号，在bootloader函数末尾 */
 			arg /= 4;
 
 			for (int i = 0; i < arg; i++) {
@@ -1071,6 +1101,12 @@ bootloader(unsigned timeout)
 		// command:			GET_CRC/EOC
 		// reply:			<crc:4>/INSYNC/OK
 		//
+		
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ 
+		* （5）CRC32校验命令PROTO_GET_CRC（0x29），命令结构：PROTO_GET_CRC+PROTO_EOC 
+		*	  收到PROTO_GET_CRC的2ms内未接收到命令终止字，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) 
+		*	  计算CRC32结果，输出crcsum(4byte)，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) 
+		* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_GET_CRC:
 
 			// expect EOC
@@ -1079,6 +1115,10 @@ bootloader(unsigned timeout)
 			}
 
 			// compute CRC of the programmed area
+			/* 计算烧写区域的CRC32值，注意飞控固件首地址的处理 */
+			/* board_info.fw_size：飞控固件的最大值 */
+			/* flash_func_read_word：读取flash某特定地址内容，4位读取，定义在main_f?.c */
+			/* crc32：计算给定数据的crc32校验结果 */
 			uint32_t sum = 0;
 
 			for (unsigned p = 0; p < board_info.fw_size; p += 4) {
@@ -1104,10 +1144,17 @@ bootloader(unsigned timeout)
 		//
 		// command:			GET_OTP/<addr:4>/EOC
 		// reply:			<value:4>/INSYNC/OK
-		case PROTO_GET_OTP: //从flash 读出host 指定数据返回来验证
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （6）读取OTP区域命令PROTO_GET_OTP（0x2a），命令结构：PROTO_GET_OTP+index(4byte)+PROTO_EOC */
+		/*   * 收到PROTO_GET_OTP后未在允许延时（100ms）内收到有效的地址信息，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*   * 收到地址后2ms内未收到命令终止字，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*   * 运行成功，输出OTP地址数值val(4byte)，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		case PROTO_GET_OTP: //从flash读取OTP区域某地址的1字节指令 返回来验证
 			// expect argument
 			{
 				uint32_t index = 0;
+				
 
 				if (cin_word(&index, 100)) {
 					goto cmd_bad;
@@ -1126,6 +1173,12 @@ bootloader(unsigned timeout)
 		//
 		// command:			GET_SN/<addr:4>/EOC
 		// reply:			<value:4>/INSYNC/OK
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （7）获取MCU的UDID（Unique Device ID，或称为序列号）PROTO_GET_SN（0x2b），命令结构PROTO_GET_SN+index(4byte)+PROTO_EOC */
+		/*   * 收到PROTO_GET_SN后未在允许延时（100ms）内收到有效的地址信息，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*   * 收到地址后2ms内未收到命令终止字，则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*   * 运行成功，输出UDID数值val(4byte)，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_GET_SN:
 			// expect argument
 			{
@@ -1156,12 +1209,19 @@ bootloader(unsigned timeout)
 		//
 		// command:			GET_CHIP/EOC
 		// reply:			<value:4>/INSYNC/OK
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （8）获取芯片ID和版本信息PROTO_GET_CHIP（0x2c），命令结构PROTO_GET_CHIP+PROTO_EOC */
+		/*   * 收到命令PROTO_GET_CHIP后2ms内未收到命令终止字，进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*   * 运行成功，输出芯片ID和版本信息数值val(4byte)，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_GET_CHIP: {
 				// expect EOC
 				if (!wait_for_eoc(2)) {
 					goto cmd_bad;
 				}
 
+				
+			/* get_mcu_id：读取寄存器DBGMCU_IDCODE值，表示芯片ID和版本 */
 				cout_word(get_mcu_id());//IDCODE
 				SET_BL_STATE(STATE_PROTO_GET_CHIP); //bl_state |= 0x 80
 			}
@@ -1171,6 +1231,11 @@ bootloader(unsigned timeout)
 		//
 		// command:			GET_CHIP_DES/EOC
 		// reply:			<value:4>/INSYNC/OK
+		
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （9）获取芯片描述信息PROTO_GET_CHIP_DES（0x2e），命令结构PROTO_GET_CHIP_DES+PROTO_EOC */
+		/*	 * 收到命令PROTO_GET_CHIP后2ms内未收到命令终止字，进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*	 * 运行成功，输出芯片描述信息len（4byte）+buffer(len byte)，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
 		case PROTO_GET_CHIP_DES: {
 				uint8_t buffer[MAX_DES_LENGTH];
 				unsigned len = MAX_DES_LENGTH;
@@ -1188,7 +1253,18 @@ bootloader(unsigned timeout)
 			break;
 #endif
 
-#ifdef BOOT_DELAY_ADDRESS
+#ifdef BOOT_DELAY_ADDRESS/* 对主控FMU，BOOT_DELAY_ADDRESS定义为0x1a0，代码有效，hw_config.h */
+									/* 对IO协处理器，BOOT_DELAY_ADDRESS未定义，代码无效 */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （10）设置飞控固件启动延时PROTO_SET_DELAY（0x2d），命令结构：PROTO_SET_DELAY+v(4byte)+PROTO_EOC */
+		/*    * 收到PROTO_SET_DELAY后100ms内未收到延时v，或延时时间为负数，进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*    * 取延时v的最低字节为时延boot_delay有效信息（单位s），若此值大于允许最大值BOOT_DELAY_MAX，进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*    * 收到延时v的2ms内未收到命令终止字，进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*    * 读取BOOT_DELAY_ADDRESS起始的显示延时信息有效性的2个关键字，通过与预定的关键字对比，若不一致则进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*    * 根据延时boot_delay和关键字BOOT_DELAY_SIGNATURE1确定需存放在地址BOOT_DELAY_ADDRESS的数据，并写入以更新延时参数 */
+		/*    * 再次读取地址BOOT_DELAY_ADDRESS的数据与需写入的数据进行对比，若不一致（写入失败），则进行命令失败处理，回告结构：（PROTO_INSYNC+PROTO_FAILED） */
+		/*    * 运行成功，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 
 		case PROTO_SET_DELAY: {
 				/*
@@ -1203,6 +1279,10 @@ bootloader(unsigned timeout)
 					goto cmd_bad;
 				}
 
+				
+				/* 取v的低字节作为时延boot_delay的有效信息（时延最大255s） */
+				/* BOOT_DELAY_MAX：值30，飞控固件启动最大时延，定义在bl.c */
+				/* cmd_bad：错误命令处理函数的标号，在bootloader函数末尾 */
 				uint8_t boot_delay = v & 0xFF;
 
 				if (boot_delay > BOOT_DELAY_MAX) {
@@ -1214,6 +1294,14 @@ bootloader(unsigned timeout)
 					goto cmd_bad;
 				}
 
+
+				
+				/* 读取BOOT_DELAY_ADDRESS起始的2个字，提取显示延时信息有效性的2个关键字，通过对比来判断信息是否有效 */
+				/* BUG?sig1的最低字节是延时参数，不应作为判断依据，这里有问题 */
+				/* BOOT_DELAY_ADDRESS：值0x000001a0，飞控固件启动延时信息在flash中的存储地址，仅对主控FMU有效，定义在hw_config.h */
+				/* BOOT_DELAY_SIGNATURE1：值0x92c2ecff，飞控固件启动延时信息有效的关键字1，定义在bl.h */
+				/* BOOT_DELAY_SIGNATURE2：值0xc5057d5d，飞控固件启动延时信息有效的关键字2，定义在bl.h */
+				/* cmd_bad：错误命令处理函数的标号，在bootloader函数末尾 */
 				uint32_t sig1 = flash_func_read_word(BOOT_DELAY_ADDRESS);
 				uint32_t sig2 = flash_func_read_word(BOOT_DELAY_ADDRESS + 4);
 
@@ -1222,9 +1310,19 @@ bootloader(unsigned timeout)
 					goto cmd_bad;
 				}
 
+				/* 根据延时boot_delay和关键字BOOT_DELAY_SIGNATURE1确定需存放在地址BOOT_DELAY_ADDRESS的数据，并写入 */
+				/* BOOT_DELAY_SIGNATURE1：值0x92c2ecff，飞控固件启动延时信息有效的关键字1，定义在bl.h */
+				/* BOOT_DELAY_ADDRESS：值0x000001a0，飞控固件启动延时信息在flash中的存储地址，仅对主控FMU有效，定义在hw_config.h */
+				/* flash_func_write_word：烧写flash某地址起始为特定内容，4位烧写，定义在main_f?.c */
 				uint32_t value = (BOOT_DELAY_SIGNATURE1 & 0xFFFFFF00) | boot_delay;//BOOT_DELAY_SIGNATURE1 的低两位设为 boot_delay
 				flash_func_write_word(BOOT_DELAY_ADDRESS, value);
 
+
+				
+				/* 再次读取地址BOOT_DELAY_ADDRESS的数据与需写入的数据进行对比，若不一致则跳转到cmd_fail，运行失败 */
+				/* BOOT_DELAY_ADDRESS：值0x000001a0，飞控固件启动延时信息在flash中的存储地址，仅对主控FMU有效，定义在hw_config.h */
+				/* flash_func_read_word：读取flash某特定地址内容，4位读取，定义在main_f?.c */
+				/* cmd_fail：指令运行错误处理的标号，在bootloader函数末尾 */
 				if (flash_func_read_word(BOOT_DELAY_ADDRESS) != value) {
 					goto cmd_fail;
 				}
@@ -1237,13 +1335,27 @@ bootloader(unsigned timeout)
 		// command:			BOOT/EOC
 		// reply:			INSYNC/OK
 		//
+
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （11）完成烧写并启动飞控固件PROTO_BOOT（0x30），命令结构：PROTO_BOOT+PROTO_EOC */
+		/*	  * 收到启动命令PROTO_BOOT的1s内未收到命令终止字，进行错误指令处理，回告结构：(PROTO_INSYNC+PROTO_INVALID) */
+		/*	  * 若变量first_word（飞控固件首字保存变量）中有内容 */
+		/*		   * 烧写飞控固件首字first_word */
+		/*		   * 读取飞控固件首字并与first_word对比，若不同则进行命令失败处理，回告结构：（PROTO_INSYNC+PROTO_FAILED） */
+		/*		   * 烧写首字成功，将first_word变量置为无效（0xffffffff） */
+		/*	  * 运行成功，发送PROTO_INSYNC+PROTO_OK，延时100ms，bootloader函数返回 */
 		case PROTO_BOOT:
 
 			// expect EOC
 			if (!wait_for_eoc(1000)) {
 				goto cmd_bad;
 			}
-
+			
+			/* 若变量first_word内容有效，烧写飞控固件首字并判断是否烧写成功 */
+			/* first_word：飞控固件首字保存变量，定义在bootloader函数中 */
+			/* flash_func_write_word：烧写flash某地址起始为特定内容，4位烧写，定义在main_f?.c */
+			/* flash_func_read_word：读取flash某特定地址内容，4位读取，定义在main_f?.c */
+			/* cmd_fail：指令运行错误处理的标号，在bootloader函数末尾 */
 			if (first_word != 0xffffffff && (bl_state & STATE_ALLOWS_REBOOT) != STATE_ALLOWS_REBOOT) { //要求完成过 GET_SYNC且目前未知未出过错
 				goto cmd_bad;
 			}
@@ -1266,17 +1378,31 @@ bootloader(unsigned timeout)
 
 			// quiesce and jump to the app
 			return;
-
+		
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* （12）输出调试信息（命令暂未完成）PROTO_DEBUG（0x31），直接按运行成功处理，(发送PROTO_INSYNC+PROTO_OK，变量timeout和bl_type重新赋值，继续新的命令处理) */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		case PROTO_DEBUG:
 			// XXX reserved for ad-hoc debugging as required
 			break;
 
+		
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
+		/* 其他命令，直接进入接收新的命令循环 */
+		/* ------------------------------------------------------------------------------------------------------------------------------------------------------------ */
 		default:
 			continue;
 		}
 
 		// we got a command worth syncing, so kill the timeout because
 		// we are probably talking to the uploader
+		
+		/* 4.5 命令处理完毕，运行成功后的处理（变量timeout初始化和bl_type重新赋值，调用sync_response函数发送PROTO_INSYNC+PROTO_OK表示运行成功），继续接收下一条指令。 */
+		/* timeout：bootloader跳转到飞控固件所需等待的时间，bootloader函数输入 */
+		/* bl_type：静态全局接口类型变量， */
+		/* NONE：值0，枚举类，定义在bl.h */
+		/* last_input：静态全局变量，上次获取串口数据的方式 */
+		/* sync_response：发送同步命令函数，表示运行成功，定义在bl.c */
 		timeout = 0;
 
 		// Set the bootloader port based on the port from which we received the first valid command

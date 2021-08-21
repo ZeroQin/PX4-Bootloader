@@ -258,7 +258,7 @@ static const struct usb_cdc_line_coding line_coding = {
 
  
 /* USB虚拟串口请求控制函数，被配置函数cdcacm_set_config函数使用 */
-static enum usbd_request_return_codes cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf, uint16_t *len,
+static enum usbd_control_buffer cdcacm_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf, uint16_t *len,
 								usbd_control_complete_callback *complete)
 {
 	(void)complete;

@@ -1,57 +1,11 @@
----- SERIAL_BREAK_DETECT_DISABLED Matches (26 in 4 files) ----
-hw_config.h line 54 : 
- * SERIAL_BREAK_DETECT_DISABLED                -  Optional prevent break selection on Serial port from entering or staying in BL
-hw_config.h line 98 : 
-# define  SERIAL_BREAK_DETECT_DISABLED  1
-hw_config.h line 189 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 244 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 299 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 353 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 407 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 465 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 507 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 754 : 
-#define  SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 891 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 932 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1039 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1084 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1129 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1174 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1232 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1303 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1345 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-hw_config.h line 1397 : 
-# define SERIAL_BREAK_DETECT_DISABLED   1
-board_test_usart_receiving_break in main_f4.c : 
-#if !defined(SERIAL_BREAK_DETECT_DISABLED)
-board_test_usart_receiving_break in main_f4.c : 
-#endif // !defined(SERIAL_BREAK_DETECT_DISABLED)
-board_test_usart_receiving_break in main_f7.c : 
-#if !defined(SERIAL_BREAK_DETECT_DISABLED)
-board_test_usart_receiving_break in main_f7.c : 
-#endif // !defined(SERIAL_BREAK_DETECT_DISABLED)
-board_test_usart_receiving_break in main_k66.c : 
-#if !defined(SERIAL_BREAK_DETECT_DISABLED)
-board_test_usart_receiving_break in main_k66.c : 
-#endif // !defined(SERIAL_BREAK_DETECT_DISABLED)
----- SERIAL_BREAK_DETECT_DISABLED Search Errors Encountered (10) ----
+---- BIG_ENDIAN Matches (3 in 3 files) ----
+USB_DeviceEhciSetDefaultState in usb_device_ehci.c (lib\kinetis\NXP_Kinetis_Bootloader_2_0_0\src\usb\device) : 
+#if (ENDIANNESS == BIG_ENDIAN)
+usb_misc.h (lib\kinetis\NXP_Kinetis_Bootloader_2_0_0\src\usb\include) line 109 : 
+#if (ENDIANNESS == BIG_ENDIAN)
+usb_osa.h (lib\kinetis\NXP_Kinetis_Bootloader_2_0_0\src\usb\osa) line 44 : 
+#define BIG_ENDIAN (0U)
+---- BIG_ENDIAN Search Errors Encountered (10) ----
 The following 10 files could not be processed:
 D:\Github\PX4\PX4-Bootloader\libopencm3\doc\stm32f0\index.html : File could not be opened.
 D:\Github\PX4\PX4-Bootloader\libopencm3\doc\stm32f1\index.html : File could not be opened.

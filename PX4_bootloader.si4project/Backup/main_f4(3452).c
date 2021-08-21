@@ -498,7 +498,7 @@ board_init(void)
 	gpio_mode_setup(BOARD_PORT_USART_TX, GPIO_MODE_AF, GPIO_PUPD_PULLUP, BOARD_PIN_TX);
 	gpio_mode_setup(BOARD_PORT_USART_RX, GPIO_MODE_AF, GPIO_PUPD_PULLUP, BOARD_PIN_RX);
 	/* Setup USART TX & RX pins as alternate function. */
-	/* BOARD_PORT_USART：被hw_config.h定义为GPIOD，对应寄存器GPIOD_MODER（地址0x40020C00） */
+	* BOARD_PORT_USART：被hw_config.h定义为GPIOD，对应寄存器GPIOD_MODER（地址0x40020C00） */
 	/* BOARD_PORT_USART_AF：被hw_config.h定义为GPIO_AF7，值0x7 */
 	/* BOARD_PIN_TX：被hw_config.h定义为GPIO5，值1<<5（libopencm3/include/libopencm3/stm32/common/gpio_common_all.h） */
 	/* BOARD_PIN_RX：被hw_config.h定义为GPIO6，值1<<6（libopencm3/include/libopencm3/stm32/common/gpio_common_all.h） */
